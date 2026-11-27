@@ -11,6 +11,11 @@ import ui_icons
 import updater
 import pdf_raster
 import site_map
+import geo
+import kml_dxf
+import coord_calc
+import raster_geo
+import file_clean
 from version import VERSION
 from dxf_digitals_drop import find_dmf
 
@@ -24,6 +29,7 @@ def sys_choices():
 
 AUTO = 'Автоматично (за DMF)'
 AUTO7 = 'Автоматично (за координатами)'
+IMG_EXT = ('.jpg', '.jpeg', '.png', '.tif', '.tiff', '.bmp', '.gif')
 
 
 def dmf_system(path):
@@ -152,9 +158,9 @@ def dpi_aware():
 
 class App(tk.Tk):
     # меню-рейка (як в ATLAS): групи, іконки, активний пункт — смуга акценту
-    RAIL = [('КОНВЕРТАЦІЯ', [('p1', 'layers', 'Archicad → Digitals'), ('p2', 'convert', 'DMF → DXF')]),
-            ('КООРДИНАТИ', [('p3', 'target', 'Ключ за пунктами'), ('p7', 'pin', 'Локація')]),
-            ('ЗОБРАЖЕННЯ', [('p6', 'image', 'PDF → JPEG / TIFF')]),
+    RAIL = [('КОНВЕРТАЦІЯ', [('p1', 'layers', 'Archicad → Digitals'), ('p2', 'convert', 'DMF → DXF'), ('p8', 'globe', 'KML ↔ DXF')]),
+            ('КООРДИНАТИ', [('p3', 'target', 'Ключ за пунктами'), ('p9', 'calc', 'Калькулятор'), ('p7', 'pin', 'Локація')]),
+            ('ФАЙЛИ', [('p6', 'image', 'PDF → JPEG / TIFF'), ('p10', 'grid', 'Прив\'язка растру'), ('p11', 'eraser', 'Очищення файлів')]),
             ('ARCHICAD', [('p4', 'plug', 'Транслятор')]),
             ('ПРОГРАМА', [('p5', 'refresh', 'Оновлення')])]
     TITLES = {'p1': ('Archicad DXF → Digitals', 'DXF з Archicad → система топо, кольори шарів, DXF R12 для Digitals'),
@@ -163,6 +169,10 @@ class App(tk.Tk):
               'p4': ('Транслятор Archicad', 'Підключення «07 Для Digitals (МСК)» в Archicad і експорт DXF'),
               'p5': ('Оновлення', 'Версія програми, що нового, оновлення з GitHub'),
               'p6': ('PDF → JPEG / TIFF', 'Сторінки PDF у растр: три рівні якості, TIFF без втрат (LZW / Ч/Б G4)'),
+              'p8': ('KML ↔ DXF', 'Google Earth (KML/KMZ) → DXF R12 у системі координат і назад DXF/DWG → KML'),
+              'p9': ('Калькулятор координат', 'Стовпчик точок з однієї системи в іншу: МСК, УСК-2000, WGS-84, СК-63'),
+              'p10': ('Прив\'язка растру', 'Скан чи викопіювання за точками → растр північчю вгору й розміри для Archicad'),
+              'p11': ('Очищення файлів', 'Метадані DOCX / XLSX / PPTX / PDF перед відправкою: автор, організація, назва, шаблон'),
               'p7': ('Локація', 'Зйомка DXF/DWG → система координат → місце на Google Maps')}
 
     def __init__(self):
@@ -212,9 +222,10 @@ class App(tk.Tk):
         self.phs = tk.Label(hd, font=('Segoe UI', 10), anchor='w'); self.phs.pack(anchor='w'); self._reg(self.phs, 'bg', 'text2')
         box = tk.Frame(main); box.pack(fill='x', padx=26); self._reg(box, 'bg')
         self.pages = {}
-        for k in ('p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7'):
+        for k in ('p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p9', 'p10', 'p11'):
             self.pages[k] = tk.Frame(box); self._reg(self.pages[k], 'bg')
         self._tab1(); self._tab2(); self._tab3(); self._tab4(); self._tab5(); self._tab6(); self._tab7()
+        self._tab8(); self._tab9(); self._tab10(); self._tab11()
         self._dnd_setup()
         pf = tk.Frame(main); pf.pack(fill='x', padx=26, pady=(4, 8)); self._reg(pf, 'bg')
         self.pb = ttk.Progressbar(pf, maximum=100); self.pb.pack(side='left', fill='x', expand=True)
@@ -360,7 +371,11 @@ class App(tk.Tk):
                 if f: w.configure(fg=P[f])
             except tk.TclError:
                 pass
-        for lb in (self.lb1, self.lb6):  # усі списки файлів — однаково з темою
+        for tx in (self.in9, self.out9):
+            tx.configure(bg=P['field'], fg=P['text'], insertbackground=P['text'], selectbackground=P['sel'],
+                         selectforeground=P['text'], highlightthickness=0, bd=0, relief='flat', padx=8, pady=6)
+        self.cv10.configure(bg=P['field'], highlightthickness=0, bd=0)
+        for lb in (self.lb1, self.lb6, self.lb11):  # усі списки файлів — однаково з темою
             lb.configure(bg=P['field'], fg=P['text'], selectbackground=P['accent'], selectforeground='#FFFFFF',
                          highlightthickness=0, bd=0, relief='flat', activestyle='none', font=F)
         self.log.configure(bg=P['card'], fg=P['text'], insertbackground=P['text'], selectbackground=P['sel'],
@@ -660,6 +675,274 @@ class App(tk.Tk):
         self.clipboard_clear(); self.clipboard_append('%.6f, %.6f' % (self.loc7['lat'], self.loc7['lon']))
         self.say('Координати скопійовано в буфер обміну.')
 
+    # ---------- сторінка 8: KML ↔ DXF ----------
+    def _tab8(self):
+        pg = self.pages['p8']
+        f = self._panel(pg, 'Файл', 'folder')
+        ttk.Label(f, style='Hint.TLabel', text='KML / KMZ з Google Earth → DXF R12 у вибраній системі.  DXF / DWG → KML для Google Earth.\n'
+                  'Кнопкою або перетягніть файл у вікно. Результат — поруч із файлом, без перезапису.').grid(row=0, column=0, columnspan=2, sticky='w', pady=(0, 6))
+        self.f8 = tk.StringVar(); ttk.Entry(f, textvariable=self.f8).grid(row=1, column=0, sticky='ew')
+        self._btn(f, 'Вибрати…', 'folder', self.pick8).grid(row=1, column=1, padx=(8, 0))
+        self.l8 = ttk.Label(f, text='Система координат'); self.l8.grid(row=2, column=0, sticky='w', pady=(10, 2))
+        self.s8 = ttk.Combobox(f, width=40, state='readonly'); self.s8.grid(row=3, column=0, sticky='w')
+        f.columnconfigure(0, weight=1)
+        a = tk.Frame(pg); a.pack(fill='x', pady=(0, 6)); self._reg(a, 'bg')
+        self._btn(a, 'Перетворити', 'play', self.run8, primary=True).pack(side='left')
+        self._mode8()
+
+    def pick8(self):
+        p = filedialog.askopenfilename(title='KML / DXF', filetypes=[('KML, KMZ, DXF, DWG', '*.kml *.kmz *.dxf *.dwg'), ('Усі', '*.*')])
+        if p: self.f8.set(p); self._mode8()
+
+    def _mode8(self):
+        to_dxf = self.f8.get().lower().endswith(('.kml', '.kmz')) or not self.f8.get()
+        vals = geo.systems() if to_dxf else [AUTO7] + geo.systems(); cur = self.s8.get()
+        self.s8.configure(values=vals)
+        self.s8.set(cur if cur in vals else ('МСК-46 (Львівська обл.)' if to_dxf and 'МСК-46 (Львівська обл.)' in vals else vals[0]))
+        self.l8.configure(text='Система координат DXF (куди перерахувати)' if to_dxf else 'Система координат файла')
+
+    def run8(self):
+        p = self.f8.get().strip()
+        if not os.path.exists(p): messagebox.showinfo('KML ↔ DXF', 'Виберіть файл.'); return
+        s = self.s8.get(); s = None if s == AUTO7 else s
+        self.say('\n=== %s' % os.path.basename(p)); self.setp(10)
+        def job():
+            if p.lower().endswith(('.kml', '.kmz')):
+                d, n = kml_dxf.kml_to_dxf(p, s); self.q.put('   %d об\'єктів → %s' % (n, d))
+            else:
+                d, sysn, n = kml_dxf.to_kml(p, s); self.q.put('   система: %s; %d об\'єктів → %s' % (sysn, n, d))
+                if geo.is_approx(sysn): self.q.put('УВАГА: СК-63 — наближено (кілька метрів)')
+            self.setp(100); self.q.put('ГОТОВО')
+        self._bg(job)
+
+    # ---------- сторінка 9: калькулятор координат ----------
+    def _tab9(self):
+        pg = self.pages['p9']
+        f = self._panel(pg, 'Системи', 'target')
+        vals = [geo.WGS] + geo.systems()
+        ttk.Label(f, text='З системи').grid(row=0, column=0, sticky='w')
+        ttk.Label(f, text='У систему').grid(row=0, column=1, sticky='w', padx=(16, 0))
+        self.a9 = ttk.Combobox(f, values=vals, width=34, state='readonly'); self.a9.grid(row=1, column=0, sticky='w')
+        self.b9 = ttk.Combobox(f, values=vals, width=34, state='readonly'); self.b9.grid(row=1, column=1, sticky='w', padx=(16, 0))
+        self.a9.set(vals[1] if len(vals) > 1 else vals[0]); self.b9.set(geo.WGS)
+        self.o9 = tk.StringVar(value='XY')
+        m = ttk.Frame(f); m.grid(row=2, column=0, columnspan=2, sticky='w', pady=(8, 0))
+        ttk.Radiobutton(m, text='X (північ), Y (схід) — як у Digitals', value='XY', variable=self.o9).pack(side='left')
+        ttk.Radiobutton(m, text='E (схід), N (північ) — як у DXF', value='EN', variable=self.o9).pack(side='left', padx=16)
+        f = self._panel(pg, 'Точки', 'calc')
+        ttk.Label(f, style='Hint.TLabel', text='Рядок: «назва X Y» або «X Y»; для WGS-84 — широта, довгота в градусах. Роздільник: пробіл, таб, «;».'
+                  ).grid(row=0, column=0, columnspan=2, sticky='w', pady=(0, 6))
+        self.in9 = tk.Text(f, height=6, wrap='none', font=('Consolas', 10)); self.in9.grid(row=1, column=0, sticky='nsew')
+        self.out9 = tk.Text(f, height=6, wrap='none', font=('Consolas', 10), state='disabled'); self.out9.grid(row=1, column=1, sticky='nsew', padx=(8, 0))
+        f.columnconfigure(0, weight=1); f.columnconfigure(1, weight=1)
+        a = tk.Frame(pg); a.pack(fill='x', pady=(0, 6)); self._reg(a, 'bg')
+        self._btn(a, 'Перерахувати', 'play', self.run9, primary=True).pack(side='left')
+        self._btn(a, 'Копіювати', 'copy', self.copy9).pack(side='left', padx=8)
+        self._btn(a, 'Зберегти TXT', 'save', self.save9).pack(side='left')
+
+    def run9(self):
+        src, dst = self.a9.get(), self.b9.get()
+        try: rows, txt = coord_calc.convert(self.in9.get('1.0', 'end'), src, dst, self.o9.get())
+        except Exception as e: messagebox.showerror('Калькулятор', str(e)); return
+        self.out9.configure(state='normal'); self.out9.delete('1.0', 'end'); self.out9.insert('1.0', txt); self.out9.configure(state='disabled')
+        self.say('Калькулятор: %d точок, %s → %s' % (len(rows), src, dst))
+        if geo.is_approx(src) or geo.is_approx(dst):
+            self.say('УВАГА: СК-63 без ключа — наближено (кілька метрів): для пошуку, не для документів.')
+
+    def copy9(self):
+        t = self.out9.get('1.0', 'end').strip()
+        if t: self.clipboard_clear(); self.clipboard_append(t); self.say('Результат скопійовано.')
+
+    def save9(self):
+        t = self.out9.get('1.0', 'end').strip()
+        if not t: return
+        p = filedialog.asksaveasfilename(title='Зберегти точки', defaultextension='.txt', filetypes=[('TXT', '*.txt')])
+        if p:
+            with open(p, 'w', encoding='utf-8-sig') as fh: fh.write('# %s → %s\n%s\n' % (self.a9.get(), self.b9.get(), t))
+            self.say('Збережено: %s' % p)
+
+    # ---------- сторінка 10: прив'язка растру ----------
+    def _tab10(self):
+        pg = self.pages['p10']
+        f = self._panel(pg, 'Растр', 'grid')
+        top = ttk.Frame(f); top.grid(row=0, column=0, columnspan=2, sticky='ew')
+        self._btn(top, 'Відкрити зображення…', 'folder', self.pick10).pack(side='left')
+        self.h10 = ttk.Label(top, style='Hint.TLabel', text='  Колесо — масштаб, права кнопка — зсув, клацання — нова точка.')
+        self.h10.pack(side='left', padx=8)
+        self.cv10 = tk.Canvas(f, height=int(250 * self._s), cursor='crosshair'); self.cv10.grid(row=1, column=0, sticky='nsew', pady=(6, 0))
+        side = ttk.Frame(f); side.grid(row=1, column=1, sticky='ns', padx=(8, 0), pady=(6, 0))
+        self.tv10 = ttk.Treeview(side, columns=('n', 'x', 'y', 'r'), show='headings', height=6, selectmode='browse')
+        for c, w, h in (('n', 34, '№'), ('x', 110, 'X (північ)'), ('y', 110, 'Y (схід)'), ('r', 70, 'Нев., м')):
+            self.tv10.heading(c, text=h); self.tv10.column(c, width=int(w * self._s), anchor='e')
+        self.tv10.pack(fill='both', expand=True)
+        b = ttk.Frame(side); b.pack(fill='x', pady=(6, 0))
+        self._btn(b, 'Прибрати точку', 'minus', self.del10).pack(side='left')
+        sh = ttk.Frame(side); sh.pack(fill='x', pady=(8, 0))
+        self.sh10 = tk.BooleanVar(value=False)
+        ttk.Checkbutton(sh, text='Зсув до локального нуля:', variable=self.sh10).grid(row=0, column=0, columnspan=4, sticky='w')
+        self.sx10, self.sy10 = tk.StringVar(), tk.StringVar()
+        ttk.Label(sh, text='X').grid(row=1, column=0); ttk.Entry(sh, textvariable=self.sx10, width=12).grid(row=1, column=1, padx=(4, 8))
+        ttk.Label(sh, text='Y').grid(row=1, column=2); ttk.Entry(sh, textvariable=self.sy10, width=12).grid(row=1, column=3, padx=(4, 0))
+        f.columnconfigure(0, weight=1)
+        a = tk.Frame(pg); a.pack(fill='x', pady=(0, 6)); self._reg(a, 'bg')
+        self._btn(a, 'Прив\'язати', 'play', self.run10, primary=True).pack(side='left')
+        self.img10 = None; self.pts10 = []; self.view10 = [1.0, 0.0, 0.0]  # масштаб, зсув x, y
+        self.cv10.bind('<Button-1>', self._click10); self.cv10.bind('<MouseWheel>', self._wheel10)
+        self.cv10.bind('<ButtonPress-3>', lambda e: setattr(self, '_drag10', (e.x, e.y)))
+        self.cv10.bind('<B3-Motion>', self._pan10); self.cv10.bind('<Configure>', lambda e: self._draw10())
+
+    def pick10(self):
+        p = filedialog.askopenfilename(title='Зображення', filetypes=[('Зображення', ' '.join('*' + x for x in IMG_EXT)), ('Усі', '*.*')])
+        if p: self.load10(p)
+
+    def load10(self, p):
+        from PIL import Image
+        try:
+            with Image.open(p) as im: im.load(); self.img10 = (p, im.convert('RGB'))
+        except Exception as e: messagebox.showerror('Растр', str(e)); return
+        self.pts10 = []; self._fill10()
+        W, H = self.img10[1].size; cw, ch = max(self.cv10.winfo_width(), 100), max(self.cv10.winfo_height(), 100)
+        k = min(cw / W, ch / H); self.view10 = [k, (cw - W * k) / 2, (ch - H * k) / 2]
+        self.say('Растр: %s (%d×%d)' % (os.path.basename(p), W, H)); self._draw10()
+
+    def _draw10(self):
+        from PIL import ImageTk
+        cv = self.cv10; cv.delete('all')
+        if not self.img10: return
+        im = self.img10[1]; k, ox, oy = self.view10; cw, ch = cv.winfo_width(), cv.winfo_height()
+        # видима частина зображення
+        x0, y0 = max(0, int(-ox / k)), max(0, int(-oy / k))
+        x1, y1 = min(im.width, int((cw - ox) / k) + 2), min(im.height, int((ch - oy) / k) + 2)
+        if x1 > x0 and y1 > y0:
+            crop = im.crop((x0, y0, x1, y1)).resize((max(1, int((x1 - x0) * k)), max(1, int((y1 - y0) * k))))
+            self._tk10 = ImageTk.PhotoImage(crop); cv.create_image(ox + x0 * k, oy + y0 * k, anchor='nw', image=self._tk10)
+        for i, (px, py, *_rest) in enumerate(self.pts10, 1):
+            x, y = ox + px * k, oy + py * k
+            cv.create_line(x - 9, y, x + 9, y, fill='#FF3B30', width=2); cv.create_line(x, y - 9, x, y + 9, fill='#FF3B30', width=2)
+            cv.create_text(x + 8, y - 8, text=str(i), fill='#FF3B30', anchor='sw', font=('Segoe UI Semibold', 10))
+
+    def _wheel10(self, e):
+        if not self.img10: return
+        k, ox, oy = self.view10; f = 1.25 if e.delta > 0 else 0.8
+        self.view10 = [k * f, e.x - (e.x - ox) * f, e.y - (e.y - oy) * f]; self._draw10()
+
+    def _pan10(self, e):
+        x, y = self._drag10; self.view10[1] += e.x - x; self.view10[2] += e.y - y; self._drag10 = (e.x, e.y); self._draw10()
+
+    def _click10(self, e):
+        if not self.img10: return
+        k, ox, oy = self.view10; px, py = (e.x - ox) / k, (e.y - oy) / k
+        W, H = self.img10[1].size
+        if not (0 <= px <= W and 0 <= py <= H): return
+        v = self._ask_xy(len(self.pts10) + 1)
+        if v is None: return
+        self.pts10.append((px, py, v[1], v[0]))  # (px, py, E = Y, N = X)
+        self._fill10(); self._draw10()
+
+    def _ask_xy(self, n):
+        """Діалог «X (північ), Y (схід)» для точки n → (X, Y) або None."""
+        d = tk.Toplevel(self); d.title('Точка %d' % n); d.transient(self); d.resizable(False, False)
+        fr = ttk.Frame(d, padding=14); fr.pack()
+        ttk.Label(fr, text='Координати точки %d' % n, font=('Segoe UI Semibold', 10)).grid(row=0, column=0, columnspan=2, sticky='w')
+        xv, yv = tk.StringVar(), tk.StringVar(); res = []
+        ttk.Label(fr, text='X (північ)').grid(row=1, column=0, sticky='w', pady=(8, 0))
+        ex = ttk.Entry(fr, textvariable=xv, width=18); ex.grid(row=1, column=1, padx=(8, 0), pady=(8, 0))
+        ttk.Label(fr, text='Y (схід)').grid(row=2, column=0, sticky='w', pady=(6, 0))
+        ttk.Entry(fr, textvariable=yv, width=18).grid(row=2, column=1, padx=(8, 0), pady=(6, 0))
+        def ok(*_):
+            try: res.append((float(xv.get().replace(',', '.')), float(yv.get().replace(',', '.'))))
+            except ValueError: messagebox.showerror('Точка', 'Введіть числа X і Y.', parent=d); return
+            d.destroy()
+        b = ttk.Frame(fr); b.grid(row=3, column=0, columnspan=2, sticky='e', pady=(12, 0))
+        ttk.Button(b, text='Скасувати', command=d.destroy).pack(side='right')
+        ttk.Button(b, text='Додати', command=ok, style='Accent.TButton').pack(side='right', padx=(0, 6))
+        d.bind('<Return>', ok); d.bind('<Escape>', lambda e: d.destroy())
+        ex.focus_set(); d.grab_set(); self.wait_window(d)
+        return res[0] if res else None
+
+    def _fill10(self):
+        self.tv10.delete(*self.tv10.get_children())
+        res = None
+        if len(self.pts10) >= 2:
+            try: _, res, _ = raster_geo.fit(self.pts10)
+            except ValueError: res = None
+        for i, (px, py, E, N) in enumerate(self.pts10):
+            r = '' if res is None or len(self.pts10) in (2, 3) else '%.3f' % res[i]
+            self.tv10.insert('', 'end', iid=str(i), values=(i + 1, '%.3f' % N, '%.3f' % E, r))
+
+    def del10(self):
+        s = self.tv10.selection()
+        if not s: return
+        del self.pts10[int(s[0])]; self._fill10(); self._draw10()
+
+    def run10(self):
+        if not self.img10: messagebox.showinfo('Растр', 'Відкрийте зображення.'); return
+        if len(self.pts10) < 2: messagebox.showinfo('Растр', 'Поставте щонайменше 2 точки (краще 3–4 — тоді є контроль).'); return
+        shift = (0.0, 0.0)
+        if self.sh10.get():
+            try: shift = (float(self.sy10.get().replace(',', '.')), float(self.sx10.get().replace(',', '.')))  # (E, N)
+            except ValueError: messagebox.showerror('Растр', 'Зсув: введіть числа X і Y.'); return
+        p, pts = self.img10[0], list(self.pts10)
+        self.say('\n=== Прив\'язка %s, точок %d' % (os.path.basename(p), len(pts))); self.setp(5)
+        def job():
+            r = raster_geo.rectify(p, pts, shift, lambda v: self.setp(100 * v))
+            self.q.put('   нев\'язки, м: ' + ', '.join('%.3f' % x for x in r['res']) +
+                       ('   СКП %.3f м' % r['rms'] if r['rms'] == r['rms'] else '   (контролю немає — додайте ще точку)'))
+            self.q.put('   Archicad: %.3f × %.3f м, лівий нижній кут X(схід) %.3f, Y(північ) %.3f' % (r['size_m'] + r['corner_ll']))
+            self.q.put('   → %s\n   → %s\n   → %s' % (r['png'], r['txt'], r['world']))
+            self.q.put('ГОТОВО')
+        self._bg(job)
+
+    # ---------- сторінка 11: очищення файлів ----------
+    def _tab11(self):
+        pg = self.pages['p11']
+        f = self._panel(pg, 'Файли', 'eraser')
+        ttk.Label(f, style='Hint.TLabel', text='DOCX, XLSX, PPTX, PDF — кнопкою або перетягніть у вікно. Змінюються лише метадані;\n'
+                  'текст, коментарі й виділення — без змін. Результат — копія «… (чисто)» поруч, оригінал не змінюється.'
+                  ).grid(row=0, column=0, columnspan=2, sticky='w', pady=(0, 6))
+        self.lb11 = tk.Listbox(f, height=4, selectmode='extended'); self.lb11.grid(row=1, column=0, sticky='nsew')
+        b = ttk.Frame(f); b.grid(row=1, column=1, sticky='n', padx=(8, 0))
+        self._btn(b, 'Додати…', 'plus', self.add11).pack(fill='x')
+        self._btn(b, 'Прибрати', 'minus', lambda: [self.lb11.delete(i) for i in reversed(self.lb11.curselection())]).pack(fill='x', pady=(4, 0))
+        f.columnconfigure(0, weight=1)
+        f = self._panel(pg, 'Що вписати', 'save')
+        st = load_settings()
+        self.au11 = tk.StringVar(value=st.get('clean_author', '')); self.or11 = tk.StringVar(value=st.get('clean_org', ''))
+        ttk.Label(f, text='Автор').grid(row=0, column=0, sticky='w')
+        ttk.Entry(f, textvariable=self.au11, width=36).grid(row=1, column=0, sticky='w')
+        ttk.Label(f, text='Організація').grid(row=0, column=1, sticky='w', padx=(16, 0))
+        ttk.Entry(f, textvariable=self.or11, width=36).grid(row=1, column=1, sticky='w', padx=(16, 0))
+        ttk.Label(f, style='Hint.TLabel', text='Порожнє поле — стерти. Назва, тема, ключові слова, шаблон, власні властивості, надбудови — стираються завжди.'
+                  ).grid(row=2, column=0, columnspan=2, sticky='w', pady=(8, 0))
+        a = tk.Frame(pg); a.pack(fill='x', pady=(0, 6)); self._reg(a, 'bg')
+        self._btn(a, 'Очистити', 'play', self.run11, primary=True).pack(side='left')
+
+    def add11(self, paths=None):
+        ext = file_clean.OOXML + ('.pdf',)
+        paths = paths if paths is not None else filedialog.askopenfilenames(
+            title='Файли', filetypes=[('Документи', ' '.join('*' + e for e in ext)), ('Усі', '*.*')])
+        for p in paths:
+            if p.lower().endswith(ext) and p not in self.lb11.get(0, 'end'): self.lb11.insert('end', p)
+
+    def run11(self):
+        files = list(self.lb11.get(0, 'end'))
+        if not files: messagebox.showinfo('Очищення', 'Додайте файли.'); return
+        au, org = self.au11.get().strip(), self.or11.get().strip()
+        d = load_settings(); d['clean_author'] = au; d['clean_org'] = org; save_settings(d)
+        self.say('\n=== Очищення метаданих: %d файл(ів)' % len(files)); self.setp(0)
+        def job():
+            ok = 0
+            for i, p in enumerate(files, 1):
+                try:
+                    dst, ch = file_clean.clean(p, au, org); ok += 1
+                    self.q.put('%s → %s' % (os.path.basename(p), os.path.basename(dst)))
+                    for c in ch: self.q.put('   ' + c)
+                except Exception as e:
+                    self.q.put('ПОМИЛКА %s: %s' % (os.path.basename(p), e))
+                self.setp(100.0 * i / len(files))
+            self.q.put('ГОТОВО: %d з %d' % (ok, len(files)) if ok == len(files) else 'УВАГА: очищено %d з %d' % (ok, len(files)))
+        self._bg(job)
+
     # ---------- перетягування файлів у вікно (tkinterdnd2; без нього — лише кнопки) ----------
     def _dnd_setup(self):
         """Файли, перетягнуті на вікно, ідуть на відкриту сторінку: PDF → p6, DXF/DWG → p7, DXF → p1."""
@@ -675,11 +958,18 @@ class App(tk.Tk):
             elif self.cur == 'p7':
                 ps = [p for p in ps if p.lower().endswith(('.dxf', '.dwg'))]
                 if ps: self.mf7.set(ps[0]); self.locate7()
+            elif self.cur == 'p8':
+                ps = [p for p in ps if p.lower().endswith(('.kml', '.kmz', '.dxf', '.dwg'))]
+                if ps: self.f8.set(ps[0]); self._mode8()
+            elif self.cur == 'p10':
+                ps = [p for p in ps if p.lower().endswith(IMG_EXT)]
+                if ps: self.load10(ps[0])
+            elif self.cur == 'p11': self.add11(ps)
             elif self.cur == 'p1':
                 for p in ps:
                     if p.lower().endswith('.dxf') and p not in self.lb1.get(0, 'end'): self.lb1.insert('end', p)
             else:
-                self.say('Перетягування файлів — на сторінках «Archicad → Digitals», «PDF → JPEG / TIFF», «Локація».')
+                self.say('На цій сторінці файли не перетягуються — відкрийте потрібний розділ меню.')
             return e.action
         self.dnd_bind('<<Drop>>', on_drop)
 

@@ -4,6 +4,7 @@ import os, sys, shutil, tempfile, unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import crs  # noqa: E402
+import geo  # noqa: E402
 import site_map as M  # noqa: E402
 
 LAT, LON = 49.5, 24.1  # синтетична точка
@@ -27,7 +28,7 @@ def square(E, N, half=100.0, k=1.0):
 class Locate(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix='urban_map_'); self.addCleanup(shutil.rmtree, self.dir, True)
-        self.E, self.N = crs.tm_forward(LAT, LON, crs.load_proj()[MSK])
+        self.E, self.N = geo.from_wgs(MSK, LAT, LON)
 
     def f(self, name, pts, units=None):
         p = os.path.join(self.dir, name); dxf(p, pts, units); return p
@@ -43,7 +44,7 @@ class Locate(unittest.TestCase):
         self.assertEqual(r['k'], 0.001); self.assertAlmostEqual(r['lat'], LAT, places=6)
 
     def test_usk_zone(self):
-        z = 'УСК-2000, 3° зона 8 (24°)'; E, N = crs.tm_forward(LAT, LON, crs.load_proj()[z])
+        z = 'УСК-2000, 3° зона 8 (24°)'; E, N = geo.from_wgs(z, LAT, LON)
         r = M.locate(self.f('u.dxf', square(E, N)))
         self.assertEqual(r['system'], z); self.assertAlmostEqual(r['lon'], LON, places=6)
 

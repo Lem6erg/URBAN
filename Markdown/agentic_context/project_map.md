@@ -15,6 +15,8 @@
 | Версії, оновлення, випуск | [version](../../version.py), [updater](../../updater.py), сторінка «Оновлення» в [dpt_converter](../../dpt_converter.py) (`_tab5`), [CHANGELOG](../../CHANGELOG.md), [release.ps1](../../installer/release.ps1) | [тести updater](../../tests/test_updater.py); [ТЗ оновлення](../urban_autoupdate_spec.md) |
 | PDF → JPEG / TIFF (PDFium, 3 рівні якості, TIFF LZW / Ч/Б G4) | [pdf_raster](../../pdf_raster.py), сторінка `_tab6` у [dpt_converter](../../dpt_converter.py) | [тести](../../tests/test_pdf_raster.py); [ТЗ](../urban_pdf_raster_spec.md) |
 | Локація (DXF/DWG → система → Google Maps; СК-63 наближено) | [site_map](../../site_map.py), [dwgread](../../dwgread/__init__.py), сторінка `_tab7`, перетягування `_dnd_setup` у [dpt_converter](../../dpt_converter.py) | [тести](../../tests/test_site_map.py); [ТЗ](../urban_site_map_spec.md) |
+| Система ↔ WGS-84 (спільне), KML ↔ DXF, калькулятор координат | [geo](../../geo.py), [kml_dxf](../../kml_dxf.py), [coord_calc](../../coord_calc.py), сторінки `_tab8`, `_tab9` | [тести](../../tests/test_geo_tools.py); [ТЗ](../urban_geo_tools_spec.md) |
+| Прив'язка растру, очищення метаданих | [raster_geo](../../raster_geo.py), [file_clean](../../file_clean.py), сторінки `_tab10`, `_tab11` | [тести](../../tests/test_geo_tools.py); [ТЗ](../urban_geo_tools_spec.md) |
 
 ## Дані та межі доступу
 

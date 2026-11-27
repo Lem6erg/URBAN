@@ -7,25 +7,16 @@ import os, sys, math
 import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import crs
+import geo
 
 UNITS = (1.0, 0.001)  # метри; мм (експорт Archicad без масштабу)
 
-# СК-63, зони X (захід України) — ЛИШЕ для мітки на карті, наближено. Параметри відкриті: EPSG:7825–7827
-# (ТМ, Красовський, φ0 = 0°05′), перехід Пулково-42 → WGS-84 — TOWGS84 з EPSG (точність кілька метрів).
-# До crs_keys.json не додаються: точний перерахунок СК-63 — лише за офіційним ключем.
-SK63 = {'СК-63, зона X%d (наближено)' % z: dict(ellipsoid='krassowsky', lon0=lon0, lat0=1 / 12.0, k0=1, fe=fe, fn=0,
-                                               west=w, east=e)
-        for z, lon0, fe, w, e in ((1, 23.5, 1300000, 22.0, 25.0), (2, 26.5, 2300000, 25.0, 28.0), (3, 29.5, 3300000, 28.0, 31.0))}
-TOWGS84 = dict(dx=23.57, dy=-140.95, dz=-79.8, rx=0.0, ry=-0.35, rz=-0.79, ds=-0.22, convention='position')
+SK63 = geo.SK63  # СК-63 X1–X3 наближено — лише для мітки на карті (параметри й перехід — у geo.py)
 
 
 def sk63_geo(E, N, p):
     """СК-63 (плоскі) → WGS-84 широта, довгота (наближено)."""
-    lat, lon = crs.tm_inverse(E, N, p)
-    X, Y, Z = crs._geo2xyz(lat, lon, 0.0, 'krassowsky')
-    X, Y, Z = crs._helmert(X, Y, Z, TOWGS84)
-    lat, lon, _ = crs._xyz2geo(X, Y, Z, 'wgs84')
-    return lat, lon
+    return geo._sk63_to_wgs(E, N, p)
 
 
 def sk63_guess(E, N):
@@ -35,6 +26,14 @@ def sk63_guess(E, N):
         except (ValueError, OverflowError, ZeroDivisionError): continue
         if crs.UA[0] <= lat <= crs.UA[1] and p['west'] - 0.3 <= lon <= p['east'] + 0.3: return n, lat, lon
     return None
+
+
+def detect(E, N):
+    """Система за координатами центру: (назва, [інші можливі]) або None. МСК/УСК — точно, СК-63 — наближено."""
+    g = crs.guess(E, N)
+    if g: return g[0][0], [x[0] for x in g[1:]]
+    s = sk63_guess(E, N)
+    return (s[0], []) if s else None
 
 
 def dxf_points(path):
@@ -102,18 +101,15 @@ def locate(path, system=None):
         E, N = float(c[0] * k), float(c[1] * k)
         if system:
             if system not in PR and system not in SK63: raise ValueError('система «%s» не є проєкцією з crs_keys.json' % system)
-            try: lat, lon = sk63_geo(E, N, SK63[system]) if system in SK63 else crs.tm_inverse(E, N, PR[system])
+            try: lat, lon = geo.to_wgs(system, E, N)
             except (ValueError, OverflowError, ZeroDivisionError): continue
             if crs.UA[0] <= lat <= crs.UA[1] and crs.UA[2] <= lon <= crs.UA[3]:
                 return dict(lat=lat, lon=lon, system=system, k=k, E=E, N=N, span=span * k, n=len(P), others=[])
             continue
-        g = crs.guess(E, N)
-        if g:
-            name, _, lat, lon = g[0]
-            return dict(lat=lat, lon=lon, system=name, k=k, E=E, N=N, span=span * k, n=len(P), others=[x[0] for x in g[1:]])
-        g = sk63_guess(E, N)
-        if g:
-            return dict(lat=g[1], lon=g[2], system=g[0], k=k, E=E, N=N, span=span * k, n=len(P), others=[])
+        d = detect(E, N)
+        if d:
+            lat, lon = geo.to_wgs(d[0], E, N)
+            return dict(lat=lat, lon=lon, system=d[0], k=k, E=E, N=N, span=span * k, n=len(P), others=d[1])
     raise ValueError('координати не схожі на жодну відому систему (МСК, УСК-2000, СК-63) у межах України (центр %.2f %.2f) — '
                      'імовірно, локальні координати; виберіть систему вручну' % (c[0], c[1]) if not system else
                      'у системі «%s» центр зйомки (%.2f %.2f) не потрапляє в Україну' % (system, c[0], c[1]))

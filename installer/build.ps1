@@ -1,5 +1,5 @@
 ﻿# Збирання інсталятора URBAN: PyInstaller (exe без Python) → Inno Setup → URBAN_Setup.exe + URBAN_Setup.exe.sha256
-# Потрібні: python з numpy, Pillow, pypdfium2, tkinterdnd2, pyinstaller; Inno Setup 6 (ISCC.exe). Створено 27.11.2026 (CLAUDE).
+# Потрібні: python з numpy, Pillow, pypdfium2, pypdf, tkinterdnd2, pyinstaller; Inno Setup 6 (ISCC.exe). Створено 27.11.2026 (CLAUDE).
 # Код — G:\URBAN\URBAN [app]; шляхи відносні до цієї папки. Версія — з version.py.
 param([string]$OutDir = 'G:\URBAN\Документація')
 $ErrorActionPreference = 'Stop'
