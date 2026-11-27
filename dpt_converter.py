@@ -196,6 +196,8 @@ class App(tk.Tk):
         ver = self.verlab = tk.Label(rail, text='URBAN ' + VERSION, font=('Segoe UI', 8), anchor='w', cursor='hand2')
         ver.pack(side='bottom', fill='x', padx=20, pady=12); ver.bind('<Button-1>', lambda e: self.show('p5'))
         self._reg(ver, 'card', 'text2')
+        # шкала оновлення — під підписом версії, видна лише під час завантаження (загальна шкала — для конвертацій)
+        self.upb = ttk.Progressbar(rail, maximum=100)
         self.upd = None  # знайдене оновлення {version, notes, url, sha_url}
         # вміст
         main = tk.Frame(body); main.pack(side='left', fill='both', expand=True); self._reg(main, 'bg')
@@ -583,21 +585,35 @@ class App(tk.Tk):
         info = self.upd
         if not info or not updater.can_install(): return
         self.upd_btn.configure(state='disabled'); self.upd_st.configure(text='Завантажую версію %s…' % info['version'])
-        self.say('\n=== Оновлення до %s' % info['version']); self.setp(0)
+        self.say('\n=== Оновлення до %s' % info['version']); self._upbar(info['version'], 0)
         def job():
-            try: path = updater.download(info, lambda fr: self.setp(100 * fr))
+            try: path = updater.download(info, lambda fr: self.q.put(lambda: self._upbar(info['version'], 100 * fr)))
             except Exception as e:
                 msg = str(e); self.q.put('ПОМИЛКА оновлення: %s' % msg)
-                self.q.put(lambda: (self.upd_st.configure(text='Не вдалося: ' + msg), self.upd_btn.configure(state='normal')))
+                self.q.put(lambda: (self._upbar(None), self.upd_st.configure(text='Не вдалося: ' + msg),
+                                    self.upd_btn.configure(state='normal')))
                 return
             self.q.put('ГОТОВО: завантажено й перевірено (SHA-256). Запускаю встановлення — програма закриється.')
             def go():
                 try: updater.run_installer(path)
                 except Exception as e:
+                    self._upbar(None)
                     self.say('ПОМИЛКА: не вдалося запустити інсталятор: %s' % e); self.upd_btn.configure(state='normal'); return
                 self.after(800, self.destroy)
             self.q.put(go)
         threading.Thread(target=job, daemon=True).start()
+
+    def _upbar(self, version, v=0.0):
+        """Шкала оновлення в рейці: version=None — сховати й повернути підпис версії."""
+        if version is None:
+            self.upb.pack_forget(); self.verlab.pack_configure(pady=12)
+            self.verlab.configure(text='URBAN %s  ·  є %s' % (VERSION, self.upd['version']) if self.upd else 'URBAN ' + VERSION)
+            return
+        if not self.upb.winfo_ismapped():
+            self.verlab.pack_configure(pady=(12, 4))
+            self.upb.pack(side='bottom', fill='x', padx=20, pady=(0, 14), before=self.verlab)
+        v = max(0.0, min(100.0, v)); self.upb['value'] = v
+        self.verlab.configure(text='Оновлення до %s  ·  %d %%' % (version, round(v)))
 
     # ---------- сторінка 3: ключ за спільними пунктами ----------
     def _tab3(self):
