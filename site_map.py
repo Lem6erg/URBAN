@@ -84,15 +84,43 @@ def points(path):
     return P
 
 
+CELL = 20000.0
+
+
+def survey_mask(P, system=None):
+    """Маска точок самої зйомки. Найбільше скупчення (комірки 20 км + сусідні), чий центр лежить у системі
+    (вибраній або визначеній за координатами); геометрія блоків біля нуля його не перебиває, навіть якщо її більшість
+    (урок 27.11.2026: DWG, 90 % вершин — у визначеннях блоків). Не знайдено — старий фільтр за медіаною."""
+    P = np.asarray(P, float)
+    def ok(c, k):
+        E, N = float(c[0] * k), float(c[1] * k)
+        if system:
+            try:
+                lat, lon = geo.to_wgs(system, E, N)
+                return crs.UA[0] <= lat <= crs.UA[1] and crs.UA[2] <= lon <= crs.UA[3]
+            except (ValueError, OverflowError, ZeroDivisionError, KeyError): return False
+        return bool(detect(E, N))
+    best = None
+    for k in UNITS:  # комірка — 20 км у метрах, тобто CELL / k в одиницях креслення (мм)
+        G = np.floor(P * k / CELL)
+        cells, cnt = np.unique(G, axis=0, return_counts=True)
+        for i in np.argsort(-cnt)[:50]:
+            m = (np.abs(G - cells[i]) <= 1).all(1)
+            if best is not None and m.sum() <= best.sum(): continue
+            Q = P[m]
+            if ok((Q.min(0) + Q.max(0)) / 2, k): best = m
+    if best is not None: return best
+    c = np.median(P, 0); far = np.abs(P - c).max(1)
+    near = far <= max(20000.0, 20 * float(np.median(far)))
+    return near if near.sum() >= 0.5 * len(P) else np.ones(len(P), bool)
+
+
 def locate(path, system=None):
     """Центр зйомки (медіана вершин) → система координат → широта/довгота.
     system=None — визначити автоматично (crs.guess); інакше — проєкція з crs_keys.json.
     Повертає dict(lat, lon, system, k, E, N, span, n, others)."""
     P = points(path)
-    c = np.median(P, 0)
-    # відкинути далекі від медіани (елементи блоків у локальних координатах, випадкові об'єкти біля нуля)
-    far = np.abs(P - c).max(1); near = P[far <= max(20000.0, 20 * float(np.median(far)))]
-    if len(near) >= 0.5 * len(P): P = near
+    P = P[survey_mask(P, system)]  # без геометрії блоків біля нуля та випадкових далеких об'єктів
     lo, hi = P.min(0), P.max(0)  # далекі точки вже відкинуто
     c = (lo + hi) / 2  # центр зйомки — середина охоплення
     span = float(max(hi - lo))

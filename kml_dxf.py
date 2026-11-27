@@ -157,8 +157,8 @@ def to_kml(path, system=None, dst=None):
     objs = dwg_objects(path) if path.lower().endswith('.dwg') else dxf_objects(path)
     if not objs: raise ValueError('у файлі немає ліній чи точок')
     A = np.array([p for o in objs for p in o['pts']])
-    c = np.median(A, 0); far = np.abs(A - c).max(1); lim = max(20000.0, 20 * float(np.median(far)))
-    keep = [o for o in objs if np.abs(np.array(o['pts']) - c).max() <= lim]
+    m = site_map.survey_mask(A, system); lo, hi = A[m].min(0) - 1000, A[m].max(0) + 1000  # скупчення зйомки + 1 км
+    keep = [o for o in objs if (np.array(o['pts']) >= lo).all() and (np.array(o['pts']) <= hi).all()]
     if not keep: raise ValueError('не вдалося відокремити зйомку від далеких об\'єктів')
     B = np.array([p for o in keep for p in o['pts']]); E, N = (B.min(0) + B.max(0)) / 2
     if not system:

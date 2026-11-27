@@ -176,7 +176,7 @@ class App(tk.Tk):
               'p4': ('Транслятор Archicad', 'Підключення «07 Для Digitals (МСК)» в Archicad і експорт DXF'),
               'p5': ('Оновлення', 'Версія програми, що нового, оновлення з GitHub'),
               'p6': ('PDF → JPEG / TIFF', 'Сторінки PDF у растр: три рівні якості, TIFF без втрат (LZW / Ч/Б G4)'),
-              'p8': ('KML ↔ DXF', 'Google Earth (KML/KMZ) → DXF R12 у системі координат і назад DXF/DWG → KML'),
+              'p8': ('KML ↔ DXF', 'Google Earth (KML/KMZ) → DXF R12 у системі координат і назад DXF → KML'),
               'p9': ('Калькулятор координат', 'Стовпчик точок з однієї системи в іншу: МСК, УСК-2000, WGS-84, СК-63'),
               'p10': ('Прив\'язка растру', 'Скан чи викопіювання за точками → растр північчю вгору й розміри для Archicad'),
               'p11': ('Очищення файлів', 'Метадані DOCX / XLSX / PPTX / PDF перед відправкою: автор, організація, назва, шаблон'),
@@ -773,7 +773,7 @@ class App(tk.Tk):
     def _tab8(self):
         pg = self.pages['p8']
         f = self._panel(pg, 'Файл', 'folder')
-        ttk.Label(f, style='Hint.TLabel', text='KML / KMZ з Google Earth → DXF R12 у вибраній системі.  DXF / DWG → KML для Google Earth.\n'
+        ttk.Label(f, style='Hint.TLabel', text='KML / KMZ з Google Earth → DXF R12 у вибраній системі.  DXF → KML для Google Earth.\n'
                   'Кнопкою або перетягніть файл у вікно. Результат — поруч із файлом, без перезапису.').grid(row=0, column=0, columnspan=2, sticky='w', pady=(0, 6))
         self.f8 = tk.StringVar(); ttk.Entry(f, textvariable=self.f8).grid(row=1, column=0, sticky='ew')
         self._btn(f, 'Вибрати…', 'folder', self.pick8).grid(row=1, column=1, padx=(8, 0))
@@ -785,7 +785,7 @@ class App(tk.Tk):
         self._mode8()
 
     def pick8(self):
-        p = filedialog.askopenfilename(title='KML / DXF', filetypes=[('KML, KMZ, DXF, DWG', '*.kml *.kmz *.dxf *.dwg'), ('Усі', '*.*')])
+        p = filedialog.askopenfilename(title='KML / DXF', filetypes=[('KML, KMZ, DXF', '*.kml *.kmz *.dxf'), ('Усі', '*.*')])
         if p: self.f8.set(p); self._mode8()
 
     def _mode8(self):
@@ -798,6 +798,8 @@ class App(tk.Tk):
     def run8(self):
         p = self.f8.get().strip()
         if not os.path.exists(p): messagebox.showinfo('KML ↔ DXF', 'Виберіть файл.'); return
+        if not p.lower().endswith(('.kml', '.kmz', '.dxf')):  # DWG → KML не потрібен (рішення користувача 27.11.2026)
+            messagebox.showinfo('KML ↔ DXF', 'Підтримуються KML, KMZ і DXF.'); return
         s = self.s8.get(); s = None if s == AUTO7 else s
         self.say('\n=== %s' % os.path.basename(p)); self.setp(10)
         def job():
@@ -1133,7 +1135,7 @@ class App(tk.Tk):
                 ps = [p for p in ps if p.lower().endswith(('.dxf', '.dwg'))]
                 if ps: self.mf7.set(ps[0]); self.locate7()
             elif self.cur == 'p8':
-                ps = [p for p in ps if p.lower().endswith(('.kml', '.kmz', '.dxf', '.dwg'))]
+                ps = [p for p in ps if p.lower().endswith(('.kml', '.kmz', '.dxf'))]
                 if ps: self.f8.set(ps[0]); self._mode8()
             elif self.cur == 'p10':
                 ps = [p for p in ps if p.lower().endswith(IMG_EXT)]

@@ -39,6 +39,12 @@ class Locate(unittest.TestCase):
         self.assertAlmostEqual(r['lat'], LAT, places=6); self.assertAlmostEqual(r['lon'], LON, places=6)
         self.assertAlmostEqual(r['span'], 200.0, places=3)
 
+    def test_block_geometry_majority(self):
+        """Урок 27.11.2026: у DWG 90 % вершин — геометрія блоків біля нуля; центр має бути на зйомці, а не біля (1; 3,5)."""
+        junk = [(i % 7 * 0.1, i % 5 * 0.1) for i in range(400)]
+        r = M.locate(self.f('b.dxf', square(self.E, self.N) + square(self.E + 300, self.N + 200) + junk))
+        self.assertEqual(r['system'], MSK); self.assertAlmostEqual(r['lat'], geo.to_wgs(MSK, self.E + 150, self.N + 100)[0], places=6)
+
     def test_millimetres(self):
         r = M.locate(self.f('mm.dxf', square(self.E, self.N, k=0.001)))
         self.assertEqual(r['k'], 0.001); self.assertAlmostEqual(r['lat'], LAT, places=6)
