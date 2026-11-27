@@ -9,6 +9,8 @@ sys.path.insert(0, HERE)
 import crs
 import ui_icons
 import updater
+import pdf_raster
+import site_map
 from version import VERSION
 from dxf_digitals_drop import find_dmf
 
@@ -21,6 +23,7 @@ def sys_choices():
 
 
 AUTO = 'Автоматично (за DMF)'
+AUTO7 = 'Автоматично (за координатами)'
 
 
 def dmf_system(path):
@@ -150,14 +153,17 @@ def dpi_aware():
 class App(tk.Tk):
     # меню-рейка (як в ATLAS): групи, іконки, активний пункт — смуга акценту
     RAIL = [('КОНВЕРТАЦІЯ', [('p1', 'layers', 'Archicad → Digitals'), ('p2', 'convert', 'DMF → DXF')]),
-            ('КООРДИНАТИ', [('p3', 'target', 'Ключ за пунктами')]),
+            ('КООРДИНАТИ', [('p3', 'target', 'Ключ за пунктами'), ('p7', 'pin', 'Де це на карті')]),
+            ('ЗОБРАЖЕННЯ', [('p6', 'image', 'PDF → JPEG / TIFF')]),
             ('ARCHICAD', [('p4', 'plug', 'Транслятор')]),
             ('ПРОГРАМА', [('p5', 'refresh', 'Оновлення')])]
     TITLES = {'p1': ('Archicad DXF → Digitals', 'DXF з Archicad → система топо, кольори шарів, DXF R12 для Digitals'),
               'p2': ('DMF → DXF', 'Топо Digitals → DXF R12 для Archicad чи CAD'),
               'p3': ('Ключ за пунктами', 'Перехід між системами координат за спільними пунктами (СК-63 тощо)'),
               'p4': ('Транслятор Archicad', 'Підключення «07 Для Digitals (МСК)» в Archicad і експорт DXF'),
-              'p5': ('Оновлення', 'Версія програми, що нового, оновлення з GitHub')}
+              'p5': ('Оновлення', 'Версія програми, що нового, оновлення з GitHub'),
+              'p6': ('PDF → JPEG / TIFF', 'Сторінки PDF у растр: три рівні якості, TIFF без втрат (LZW / Ч/Б G4)'),
+              'p7': ('Де це на карті', 'Зйомка DXF/DWG → система координат → місце на Google Maps')}
 
     def __init__(self):
         dpi_aware()
@@ -206,9 +212,10 @@ class App(tk.Tk):
         self.phs = tk.Label(hd, font=('Segoe UI', 10), anchor='w'); self.phs.pack(anchor='w'); self._reg(self.phs, 'bg', 'text2')
         box = tk.Frame(main); box.pack(fill='x', padx=26); self._reg(box, 'bg')
         self.pages = {}
-        for k in ('p1', 'p2', 'p3', 'p4', 'p5'):
+        for k in ('p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7'):
             self.pages[k] = tk.Frame(box); self._reg(self.pages[k], 'bg')
-        self._tab1(); self._tab2(); self._tab3(); self._tab4(); self._tab5()
+        self._tab1(); self._tab2(); self._tab3(); self._tab4(); self._tab5(); self._tab6(); self._tab7()
+        self._dnd_setup()
         pf = tk.Frame(main); pf.pack(fill='x', padx=26, pady=(4, 8)); self._reg(pf, 'bg')
         self.pb = ttk.Progressbar(pf, maximum=100); self.pb.pack(side='left', fill='x', expand=True)
         self.pct = tk.Label(pf, text='0 %', width=6, anchor='e', font=('Segoe UI', 10)); self.pct.pack(side='left', padx=(8, 0))
@@ -353,8 +360,9 @@ class App(tk.Tk):
                 if f: w.configure(fg=P[f])
             except tk.TclError:
                 pass
-        self.lb1.configure(bg=P['field'], fg=P['text'], selectbackground=P['accent'], selectforeground='#FFFFFF',
-                           highlightthickness=0, bd=0, relief='flat', activestyle='none', font=F)
+        for lb in (self.lb1, self.lb6):  # усі списки файлів — однаково з темою
+            lb.configure(bg=P['field'], fg=P['text'], selectbackground=P['accent'], selectforeground='#FFFFFF',
+                         highlightthickness=0, bd=0, relief='flat', activestyle='none', font=F)
         self.log.configure(bg=P['card'], fg=P['text'], insertbackground=P['text'], selectbackground=P['sel'],
                            selectforeground=P['text'], highlightthickness=0, bd=0, relief='flat', padx=12, pady=6)
         self.notes.configure(bg=P['card'], fg=P['text'], insertbackground=P['text'], selectbackground=P['sel'],
@@ -528,6 +536,152 @@ class App(tk.Tk):
         self.notes = tk.Text(f, height=9, wrap='word', state='disabled', font=('Segoe UI', 10))
         self.notes.pack(fill='both', expand=True)
         self._set_notes(self._changelog())
+
+    # ---------- сторінка 6: PDF → JPEG / TIFF ----------
+    LV = [(k, '%s — %d DPI' % (v[0], v[1])) for k, v in pdf_raster.LEVELS.items()]
+
+    def _tab6(self):
+        pg = self.pages['p6']
+        f = self._panel(pg, 'Файли PDF', 'image')
+        ttk.Label(f, style='Hint.TLabel', text='Додайте PDF кнопкою або перетягніть у вікно.\nРезультат — у папці поруч із PDF: '
+                  '«назва (JPEG)» або «назва (TIFF)»; наявні файли не перезаписуються.').grid(row=0, column=0, columnspan=2, sticky='w', pady=(0, 6))
+        self.lb6 = tk.Listbox(f, height=4, selectmode='extended'); self.lb6.grid(row=1, column=0, sticky='nsew')
+        b = ttk.Frame(f); b.grid(row=1, column=1, sticky='n', padx=(8, 0))
+        self._btn(b, 'Додати…', 'plus', self.add6).pack(fill='x')
+        self._btn(b, 'Прибрати', 'minus', lambda: [self.lb6.delete(i) for i in reversed(self.lb6.curselection())]).pack(fill='x', pady=(4, 0))
+        f.columnconfigure(0, weight=1)
+        f = self._panel(pg, 'Параметри', 'layers')
+        ttk.Label(f, text='Формат').grid(row=0, column=0, sticky='w')
+        ttk.Label(f, text='Якість').grid(row=0, column=1, sticky='w', padx=(16, 0))
+        ttk.Label(f, text='Колір').grid(row=0, column=2, sticky='w', padx=(16, 0))
+        ttk.Label(f, text='Сторінки').grid(row=0, column=3, sticky='w', padx=(16, 0))
+        self.fmt6 = ttk.Combobox(f, values=['JPEG', 'TIFF'], width=8, state='readonly'); self.fmt6.set('JPEG')
+        self.fmt6.grid(row=1, column=0, sticky='w'); self.fmt6.bind('<<ComboboxSelected>>', lambda e: self._colors6())
+        self.lvl6 = ttk.Combobox(f, values=[v for _, v in self.LV], width=20, state='readonly'); self.lvl6.current(1)
+        self.lvl6.grid(row=1, column=1, sticky='w', padx=(16, 0))
+        self.col6 = ttk.Combobox(f, width=18, state='readonly'); self.col6.grid(row=1, column=2, sticky='w', padx=(16, 0))
+        self.pg6 = tk.StringVar(value='усі'); ttk.Entry(f, textvariable=self.pg6, width=14).grid(row=1, column=3, sticky='w', padx=(16, 0))
+        ttk.Label(f, style='Hint.TLabel', text='Сторінки: «усі» або «1-3,5». Чорно-білий (CCITT G4) — лише для TIFF, найменші файли креслень.'
+                  ).grid(row=2, column=0, columnspan=4, sticky='w', pady=(8, 0))
+        self._colors6()
+        a = tk.Frame(pg); a.pack(fill='x', pady=(0, 6)); self._reg(a, 'bg')
+        self._btn(a, 'Перетворити', 'play', self.run6, primary=True).pack(side='left')
+
+    def _colors6(self):
+        keys = ['color', 'gray'] + (['bw'] if self.fmt6.get() == 'TIFF' else [])
+        vals = [pdf_raster.COLORS[k] for k in keys]; cur = self.col6.get()
+        self.col6.configure(values=vals); self.col6.set(cur if cur in vals else vals[0])
+
+    def add6(self, paths=None):
+        paths = paths if paths is not None else filedialog.askopenfilenames(title='PDF', filetypes=[('PDF', '*.pdf')])
+        for p in paths:
+            if p.lower().endswith('.pdf') and p not in self.lb6.get(0, 'end'): self.lb6.insert('end', p)
+
+    def run6(self):
+        files = list(self.lb6.get(0, 'end'))
+        if not files: messagebox.showinfo('PDF', 'Додайте PDF.'); return
+        fmt = self.fmt6.get().lower(); lvl = self.LV[self.lvl6.current()][0]
+        col = {v: k for k, v in pdf_raster.COLORS.items()}[self.col6.get()]; rng = self.pg6.get()
+        self.say('\n=== PDF → %s, %s, %s' % (fmt.upper(), self.lvl6.get(), self.col6.get())); self.setp(0)
+        def job():
+            plan = []
+            for pdf in files:
+                try: plan.append((pdf, pdf_raster.parse_pages(rng, pdf_raster.page_count(pdf))))
+                except Exception as e: self.q.put('ПОМИЛКА %s: %s' % (os.path.basename(pdf), e))
+            total = sum(len(p) for _, p in plan) or 1; done = [0]; ok = 0
+            for pdf, pages in plan:
+                self.q.put('%s — сторінок: %d' % (os.path.basename(pdf), len(pages)))
+                base = done[0]
+                def prog(k, base=base): done[0] = base + k; self.setp(100.0 * done[0] / total)
+                try:
+                    pdf_raster.convert(pdf, fmt, lvl, col, pages, prog, log=self.q.put); ok += 1
+                    self.q.put('   → %s' % pdf_raster.out_dir(pdf, fmt))
+                except Exception as e:
+                    done[0] = base + len(pages); self.q.put('ПОМИЛКА %s: %s' % (os.path.basename(pdf), e))
+            self.setp(100)
+            self.q.put('ГОТОВО: %d з %d PDF' % (ok, len(files)) if ok == len(files) else 'УВАГА: перетворено %d з %d PDF' % (ok, len(files)))
+        self._bg(job)
+
+    # ---------- сторінка 7: де це на карті ----------
+    def _tab7(self):
+        pg = self.pages['p7']
+        f = self._panel(pg, 'Зйомка', 'folder')
+        ttk.Label(f, style='Hint.TLabel', text='DXF або DWG (2004, 2010–2018) — кнопкою або перетягніть файл у вікно.'
+                  ).grid(row=0, column=0, columnspan=2, sticky='w', pady=(0, 6))
+        self.mf7 = tk.StringVar(); ttk.Entry(f, textvariable=self.mf7).grid(row=1, column=0, sticky='ew')
+        self._btn(f, 'Вибрати…', 'folder', self.pick7).grid(row=1, column=1, padx=(8, 0))
+        ttk.Label(f, text='Система координат').grid(row=2, column=0, sticky='w', pady=(10, 2))
+        self.sys7 = ttk.Combobox(f, values=[AUTO7] + site_map.systems(), width=40, state='readonly'); self.sys7.set(AUTO7)
+        self.sys7.grid(row=3, column=0, sticky='w'); self.sys7.bind('<<ComboboxSelected>>', lambda e: self.locate7())
+        f.columnconfigure(0, weight=1)
+        f = self._panel(pg, 'Місце', 'pin')
+        self.res7 = ttk.Label(f, text='Файл не вибрано.', style='Hint.TLabel', justify='left'); self.res7.grid(row=0, column=0, sticky='w')
+        b = ttk.Frame(f); b.grid(row=1, column=0, sticky='w', pady=(10, 0))
+        self.go7 = self._btn(b, 'Відкрити в Google Maps', 'globe', self.open7, primary=True, state='disabled'); self.go7.pack(side='left')
+        self.cp7 = self._btn(b, 'Копіювати координати', 'copy', self.copy7, state='disabled'); self.cp7.pack(side='left', padx=8)
+        ttk.Label(f, style='Hint.TLabel', text='Координати передаються в Google лише після натиснення «Відкрити».\n'
+                  'СК-63 — наближено (кілька метрів), для пошуку місця, не для перерахунку.').grid(row=2, column=0, sticky='w', pady=(8, 0))
+        self.loc7 = None
+
+    def pick7(self):
+        p = filedialog.askopenfilename(title='Зйомка', filetypes=[('DXF / DWG', '*.dxf *.dwg'), ('Усі', '*.*')])
+        if p: self.mf7.set(p); self.locate7()
+
+    def locate7(self):
+        p = self.mf7.get().strip()
+        if not p: return
+        if not os.path.exists(p): self.res7.configure(text='Файл не знайдено.'); return
+        sysn = self.sys7.get(); sysn = None if sysn == AUTO7 else sysn
+        self.loc7 = None; self.go7.configure(state='disabled'); self.cp7.configure(state='disabled')
+        self.res7.configure(text='Читаю %s…' % os.path.basename(p))
+        def job():
+            try: r = site_map.locate(p, sysn); err = None
+            except Exception as e: r, err = None, str(e)
+            self.q.put(lambda: self._shown7(p, r, err))
+        self._bg(job)
+
+    def _shown7(self, p, r, err):
+        if err:
+            self.res7.configure(text='Не визначено: ' + err); self.say('ПОМИЛКА карта %s: %s' % (os.path.basename(p), err)); return
+        self.loc7 = r
+        txt = ('%s\nШирота %.6f°, довгота %.6f°   ·   центр E %.2f  N %.2f%s\nОхоплення ≈ %.0f м, вершин %d'
+               % (r['system'], r['lat'], r['lon'], r['E'], r['N'], '  (DXF у мм → ×0,001)' if r['k'] != 1 else '', r['span'], r['n']))
+        if r['others']: txt += '\nМожливі також: ' + ', '.join(r['others'])
+        self.res7.configure(text=txt); self.go7.configure(state='normal'); self.cp7.configure(state='normal')
+        self.say('Карта: %s — %s' % (os.path.basename(p), r['system']))
+
+    def open7(self):
+        if not self.loc7: return
+        import webbrowser
+        webbrowser.open(site_map.gmaps_url(self.loc7['lat'], self.loc7['lon'], self.loc7['span']))
+
+    def copy7(self):
+        if not self.loc7: return
+        self.clipboard_clear(); self.clipboard_append('%.6f, %.6f' % (self.loc7['lat'], self.loc7['lon']))
+        self.say('Координати скопійовано в буфер обміну.')
+
+    # ---------- перетягування файлів у вікно (tkinterdnd2; без нього — лише кнопки) ----------
+    def _dnd_setup(self):
+        """Файли, перетягнуті на вікно, ідуть на відкриту сторінку: PDF → p6, DXF/DWG → p7, DXF → p1."""
+        try:
+            from tkinterdnd2 import TkinterDnD, DND_FILES
+            TkinterDnD._require(self)
+            self.drop_target_register(DND_FILES)
+        except Exception:
+            return
+        def on_drop(e):
+            ps = list(self.tk.splitlist(e.data))
+            if self.cur == 'p6': self.add6(ps)
+            elif self.cur == 'p7':
+                ps = [p for p in ps if p.lower().endswith(('.dxf', '.dwg'))]
+                if ps: self.mf7.set(ps[0]); self.locate7()
+            elif self.cur == 'p1':
+                for p in ps:
+                    if p.lower().endswith('.dxf') and p not in self.lb1.get(0, 'end'): self.lb1.insert('end', p)
+            else:
+                self.say('Перетягування файлів — на сторінках «Archicad → Digitals», «PDF → JPEG / TIFF», «Де це на карті».')
+            return e.action
+        self.dnd_bind('<<Drop>>', on_drop)
 
     def _changelog(self):
         try:

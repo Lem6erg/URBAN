@@ -1,5 +1,5 @@
 ﻿# Збирання інсталятора URBAN: PyInstaller (exe без Python) → Inno Setup → URBAN_Setup.exe + URBAN_Setup.exe.sha256
-# Потрібні: python з numpy, Pillow, pyinstaller; Inno Setup 6 (ISCC.exe). Створено 27.11.2026 (CLAUDE).
+# Потрібні: python з numpy, Pillow, pypdfium2, tkinterdnd2, pyinstaller; Inno Setup 6 (ISCC.exe). Створено 27.11.2026 (CLAUDE).
 # Код — G:\URBAN\URBAN [app]; шляхи відносні до цієї папки. Версія — з version.py.
 param([string]$OutDir = 'G:\URBAN\Документація')
 $ErrorActionPreference = 'Stop'
@@ -20,7 +20,8 @@ python -m PyInstaller --noconfirm --clean --windowed --name URBAN `
   --add-data "$(Join-Path $tools 'crs_keys.json');." `
   --add-data "$(Join-Path $tools 'CHANGELOG.md');." `
   --add-data "$(Join-Path $tools 'assets');assets" `
-  --hidden-import numpy --hidden-import PIL.ImageTk `
+  --hidden-import numpy --hidden-import PIL.ImageTk --hidden-import dwgread `
+  --collect-all pypdfium2 --collect-all pypdfium2_raw --collect-all tkinterdnd2 `
   --exclude-module matplotlib --exclude-module scipy --exclude-module pandas `
   (Join-Path $tools 'dpt_converter.py')
 if ($LASTEXITCODE -ne 0) { throw 'PyInstaller: помилка' }

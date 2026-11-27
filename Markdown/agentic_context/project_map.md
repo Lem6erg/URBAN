@@ -13,6 +13,8 @@
 | Системи координат (TM, Гельмерт 7 пар., підгонка 2D, автовизначення) | [crs](../../crs.py), [crs_keys.json](../../crs_keys.json), [приклад ключа](../../crs_keys.example.json) | МСК-46 → УСК-2000 на копії; [передача §3](../urban_handoff_2026-11-27.md) |
 | Інсталятор (PyInstaller + Inno Setup) | [build.ps1](../../installer/build.ps1), [URBAN.iss](../../installer/URBAN.iss), [make_assets](../../installer/make_assets.py), [інструкція транслятора](<../../installer/Як підключити транслятор.txt>), [транслятор і шаблон пунктів](../../installer/files) | збирання → `G:\URBAN\Документація\URBAN_Setup.exe` + `.sha256` |
 | Версії, оновлення, випуск | [version](../../version.py), [updater](../../updater.py), сторінка «Оновлення» в [dpt_converter](../../dpt_converter.py) (`_tab5`), [CHANGELOG](../../CHANGELOG.md), [release.ps1](../../installer/release.ps1) | [тести updater](../../tests/test_updater.py); [ТЗ оновлення](../urban_autoupdate_spec.md) |
+| PDF → JPEG / TIFF (PDFium, 3 рівні якості, TIFF LZW / Ч/Б G4) | [pdf_raster](../../pdf_raster.py), сторінка `_tab6` у [dpt_converter](../../dpt_converter.py) | [тести](../../tests/test_pdf_raster.py); [ТЗ](../urban_pdf_raster_spec.md) |
+| Де це на карті (DXF/DWG → система → Google Maps; СК-63 наближено) | [site_map](../../site_map.py), [dwgread](../../dwgread/__init__.py), сторінка `_tab7`, перетягування `_dnd_setup` у [dpt_converter](../../dpt_converter.py) | [тести](../../tests/test_site_map.py); [ТЗ](../urban_site_map_spec.md) |
 
 ## Дані та межі доступу
 
