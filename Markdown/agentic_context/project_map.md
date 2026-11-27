@@ -17,6 +17,8 @@
 | Локація (DXF/DWG → система → Google Maps; СК-63 наближено) | [site_map](../../site_map.py), [dwgread](../../dwgread/__init__.py), сторінка `_tab7`, перетягування `_dnd_setup` у [dpt_converter](../../dpt_converter.py) | [тести](../../tests/test_site_map.py); [ТЗ](../urban_site_map_spec.md) |
 | Система ↔ WGS-84 (спільне), KML ↔ DXF, калькулятор координат | [geo](../../geo.py), [kml_dxf](../../kml_dxf.py), [coord_calc](../../coord_calc.py), сторінки `_tab8`, `_tab9` | [тести](../../tests/test_geo_tools.py); [ТЗ](../urban_geo_tools_spec.md) |
 | Прив'язка растру, очищення метаданих | [raster_geo](../../raster_geo.py), [file_clean](../../file_clean.py), сторінки `_tab10`, `_tab11` | [тести](../../tests/test_geo_tools.py); [ТЗ](../urban_geo_tools_spec.md) |
+| Перевірка ПЗ (DOCX), XML ДЗК → DXF, межа → KML і відстані ЦЗ (OSM/OSRM) | [pz_check](../../pz_check.py), [dzk_xml](../../dzk_xml.py), [cz_routes](../../cz_routes.py), сторінки `_tab13`, `_tab12`, панель «Межа і ЦЗ» у `_tab7` | [тести](../../tests/test_pz_cadastre_cz.py); [ТЗ](../urban_pz_cadastre_cz_spec.md) |
+| Процеси: стартова сторінка, шкала кожного процесу на своїй сторінці | `_tab0`, `_bg`, `_job_start`/`_job_end`, `_bars`, `setp` у [dpt_converter](../../dpt_converter.py) | ручна перевірка GUI; [ТЗ](../urban_pz_cadastre_cz_spec.md) Р9 |
 
 ## Дані та межі доступу
 

@@ -1,7 +1,7 @@
 """URBAN (раніше «Конвертер ДПТ»): Archicad DXF → Digitals (МСК/СК-63/УСК-2000) і DMF → DXF R12.
 Запуск: G:\\URBAN\\Документація\\URBAN.bat (pythonw). Створено 27.11.2026 (CLAUDE); код — G:\\URBAN\\URBAN [app].
 Перерахунок між системами — лише за ключами з crs_keys.json (див. crs.py); без ключів доступно «як у топо»."""
-import os, sys, threading, subprocess, queue, re, traceback, json
+import os, sys, threading, subprocess, queue, re, traceback, json, time
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -16,6 +16,9 @@ import kml_dxf
 import coord_calc
 import raster_geo
 import file_clean
+import pz_check
+import dzk_xml
+import cz_routes
 from version import VERSION
 from dxf_digitals_drop import find_dmf
 
@@ -158,12 +161,16 @@ def dpi_aware():
 
 class App(tk.Tk):
     # меню-рейка (як в ATLAS): групи, іконки, активний пункт — смуга акценту
-    RAIL = [('КОНВЕРТАЦІЯ', [('p1', 'layers', 'Archicad → Digitals'), ('p2', 'convert', 'DMF → DXF'), ('p8', 'globe', 'KML ↔ DXF')]),
-            ('КООРДИНАТИ', [('p3', 'target', 'Ключ за пунктами'), ('p9', 'calc', 'Калькулятор'), ('p7', 'pin', 'Локація')]),
-            ('ФАЙЛИ', [('p6', 'image', 'PDF → JPEG / TIFF'), ('p10', 'grid', 'Прив\'язка растру'), ('p11', 'eraser', 'Очищення файлів')]),
+    RAIL = [('ГОЛОВНА', [('p0', 'activity', 'Процеси')]),
+            ('КОНВЕРТАЦІЯ', [('p1', 'layers', 'Archicad → Digitals'), ('p2', 'convert', 'DMF → DXF'), ('p8', 'globe', 'KML ↔ DXF')]),
+            ('КООРДИНАТИ', [('p3', 'target', 'Ключ за пунктами'), ('p9', 'calc', 'Калькулятор'), ('p7', 'pin', 'Локація'),
+                            ('p12', 'parcel', 'Кадастр (XML ДЗК)')]),
+            ('ФАЙЛИ', [('p6', 'image', 'PDF → JPEG / TIFF'), ('p10', 'grid', 'Прив\'язка растру'), ('p11', 'eraser', 'Очищення файлів'),
+                       ('p13', 'check', 'Перевірка ПЗ')]),
             ('ARCHICAD', [('p4', 'plug', 'Транслятор')]),
             ('ПРОГРАМА', [('p5', 'refresh', 'Оновлення')])]
-    TITLES = {'p1': ('Archicad DXF → Digitals', 'DXF з Archicad → система топо, кольори шарів, DXF R12 для Digitals'),
+    TITLES = {'p0': ('Процеси', 'Усі запущені й завершені процеси цього сеансу, стан програми'),
+              'p1': ('Archicad DXF → Digitals', 'DXF з Archicad → система топо, кольори шарів, DXF R12 для Digitals'),
               'p2': ('DMF → DXF', 'Топо Digitals → DXF R12 для Archicad чи CAD'),
               'p3': ('Ключ за пунктами', 'Перехід між системами координат за спільними пунктами (СК-63 тощо)'),
               'p4': ('Транслятор Archicad', 'Підключення «07 Для Digitals (МСК)» в Archicad і експорт DXF'),
@@ -173,6 +180,8 @@ class App(tk.Tk):
               'p9': ('Калькулятор координат', 'Стовпчик точок з однієї системи в іншу: МСК, УСК-2000, WGS-84, СК-63'),
               'p10': ('Прив\'язка растру', 'Скан чи викопіювання за точками → растр північчю вгору й розміри для Archicad'),
               'p11': ('Очищення файлів', 'Метадані DOCX / XLSX / PPTX / PDF перед відправкою: автор, організація, назва, шаблон'),
+              'p12': ('Кадастр (XML ДЗК)', 'Обмінний файл ДЗК → DXF у системі координат; ділянка за к.н. на карті'),
+              'p13': ('Перевірка ПЗ', 'DOCX перед видачею: шифри норм, залишки чатів, виділення, коментарі, метадані, нумерація'),
               'p7': ('Локація', 'Зйомка DXF/DWG → система координат → місце на Google Maps')}
 
     def __init__(self):
@@ -190,12 +199,14 @@ class App(tk.Tk):
         top = tk.Frame(self, height=int(58 * s)); top.pack(fill='x'); top.pack_propagate(False); self._reg(top, 'card')
         self.logo = tk.Label(top); self.logo.pack(side='left', padx=(18, 10)); self._reg(self.logo, 'card')
         t = tk.Label(top, text='URBAN', font=('Segoe UI Semibold', 16)); t.pack(side='left'); self._reg(t, 'card', 'text')
-        t = tk.Label(top, text='Archicad  ·  Digitals  ·  системи координат', font=('Segoe UI', 10))
+        t = tk.Label(top, text='Archicad  ·  Digitals', font=('Segoe UI', 10))
         t.pack(side='left', padx=(14, 0), pady=(3, 0)); self._reg(t, 'card', 'text2')
         sg = ttk.Frame(top, style='Seg.TFrame', padding=2); sg.pack(side='right', padx=18)
         self.segb = {}
         for k, txt, ic in (('auto', 'Авто', 'auto'), ('light', 'Світла', 'sun'), ('dark', 'Темна', 'moon')):
-            b = ttk.Button(sg, text=' ' + txt, style='Seg.TButton', takefocus=False, compound='left', command=lambda k=k: self.set_mode(k))
+            # лише значки (вимога користувача 27.11.2026); назва теми — у підказці
+            b = ttk.Button(sg, text='', style='Seg.TButton', takefocus=False, compound='image', command=lambda k=k: self.set_mode(k))
+            self._tip(b, txt + ' тема' if k != 'auto' else 'Тема як у Windows')
             b.pack(side='left', padx=1); self.segb[k] = b; self._icon_w.append((b, ic, 'seg:' + k, 16))
         line = tk.Frame(self, height=1); line.pack(fill='x'); self._reg(line, 'sep')
         body = tk.Frame(self); body.pack(fill='both', expand=True); self._reg(body, 'bg')
@@ -205,8 +216,8 @@ class App(tk.Tk):
         self.items = {}
         for gi, (g, items) in enumerate(self.RAIL):
             if gi:
-                sp = tk.Frame(rail, height=1); sp.pack(fill='x', padx=16, pady=(10, 2)); self._reg(sp, 'sep')
-            h = tk.Label(rail, text=g, font=('Segoe UI Semibold', 8), anchor='w'); h.pack(fill='x', padx=20, pady=(14 if not gi else 8, 4))
+                sp = tk.Frame(rail, height=1); sp.pack(fill='x', padx=16, pady=(6, 1)); self._reg(sp, 'sep')
+            h = tk.Label(rail, text=g, font=('Segoe UI Semibold', 8), anchor='w'); h.pack(fill='x', padx=20, pady=(10 if not gi else 4, 2))
             self._reg(h, 'card', 'text2')
             for key, ic, txt in items: self._rail_item(key, ic, txt)
         ver = self.verlab = tk.Label(rail, text='URBAN ' + VERSION, font=('Segoe UI', 8), anchor='w', cursor='hand2')
@@ -222,27 +233,44 @@ class App(tk.Tk):
         self.phs = tk.Label(hd, font=('Segoe UI', 10), anchor='w'); self.phs.pack(anchor='w'); self._reg(self.phs, 'bg', 'text2')
         box = tk.Frame(main); box.pack(fill='x', padx=26); self._reg(box, 'bg')
         self.pages = {}
-        for k in ('p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p9', 'p10', 'p11'):
+        for k in ('p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p9', 'p10', 'p11', 'p12', 'p13'):
             self.pages[k] = tk.Frame(box); self._reg(self.pages[k], 'bg')
-        self._tab1(); self._tab2(); self._tab3(); self._tab4(); self._tab5(); self._tab6(); self._tab7()
-        self._tab8(); self._tab9(); self._tab10(); self._tab11()
+        self._tl = threading.local(); self._jobs = {}; self._jn = 0; self._rows = {}
+        self._tab0(); self._tab1(); self._tab2(); self._tab3(); self._tab4(); self._tab5(); self._tab6(); self._tab7()
+        self._tab8(); self._tab9(); self._tab10(); self._tab11(); self._tab12(); self._tab13()
         self._dnd_setup()
-        pf = tk.Frame(main); pf.pack(fill='x', padx=26, pady=(4, 8)); self._reg(pf, 'bg')
-        self.pb = ttk.Progressbar(pf, maximum=100); self.pb.pack(side='left', fill='x', expand=True)
-        self.pct = tk.Label(pf, text='0 %', width=6, anchor='e', font=('Segoe UI', 10)); self.pct.pack(side='left', padx=(8, 0))
-        self._reg(self.pct, 'bg', 'text2')
+        # шкали процесів відкритої сторінки: рядок «назва · шкала · %» на кожен її процес (вимога користувача 27.11.2026)
+        self.pbox = tk.Frame(main); self.pbox.pack(fill='x', padx=26, pady=(4, 8)); self._reg(self.pbox, 'bg')
         lf = self._panel(main, 'Журнал', None, dict(fill='both', expand=True, padx=26, pady=(0, 22)), pad=(4, 0, 4, 4))
         self.log = tk.Text(lf, height=7, wrap='word', state='disabled', font=('Consolas', 10))
         self.log.pack(fill='both', expand=True)
-        self.show('p1'); self.apply_theme()
+        self.show('p0'); self.apply_theme()
         keys = crs.systems()
         self.say('Системи: ' + (', '.join(keys) if keys else 'немає (crs_keys.json)') + '. МСК-46 ↔ УСК-2000 — точно (одна основа, EPSG). СК-63 — лише з офіційним ключем.')
         if not os.path.exists(self.trp): self.say('УВАГА: файл транслятора не знайдено: %s' % self.trp)
         self.after(100, self._pump); self.after(3000, self._watch); self.after(2500, self._auto_update)
 
     # ---------- каркас: реєстр кольорів, панелі, рейка ----------
+    def _tip(self, w, text):
+        """Підказка під віджетом при наведенні."""
+        st = {}
+        def show(e):
+            t = st['t'] = tk.Toplevel(self); t.wm_overrideredirect(True)
+            P = getattr(self, 'P', None) or {}
+            tk.Label(t, text=text, font=('Segoe UI', 9), bg=P.get('card', '#FFFFFF'), fg=P.get('text', '#000000'),
+                     bd=1, relief='solid', padx=6, pady=2).pack()
+            t.wm_geometry('+%d+%d' % (w.winfo_rootx(), w.winfo_rooty() + w.winfo_height() + 4))
+        def hide(e):
+            if st.get('t'): st.pop('t').destroy()
+        w.bind('<Enter>', show, add='+'); w.bind('<Leave>', hide, add='+'); w.bind('<ButtonPress>', hide, add='+')
+
     def _reg(self, w, bg, fg=None):
         self._regs.append((w, bg, fg))
+        if getattr(self, 'P', None):  # віджет, створений після теми (рядки процесів)
+            try:
+                w.configure(bg=self.P[bg])
+                if fg: w.configure(fg=self.P[fg])
+            except tk.TclError: pass
 
     def _panel(self, parent, title, icon, pack=None, pad=(16, 0, 16, 14)):
         """Панель-група: рамка 1 px, заголовок КАПІТЕЛЛЮ з іконкою; повертає ttk.Frame для вмісту."""
@@ -260,7 +288,7 @@ class App(tk.Tk):
         self._icon_w.append((b, icon, 'white' if primary else 'accent', 18)); return b
 
     def _rail_item(self, key, ic, txt):
-        row = tk.Frame(self.rail, height=int(40 * self._s), cursor='hand2'); row.pack(fill='x', padx=10, pady=1); row.pack_propagate(False)
+        row = tk.Frame(self.rail, height=int(30 * self._s), cursor='hand2'); row.pack(fill='x', padx=10, pady=1); row.pack_propagate(False)
         stripe = tk.Frame(row, width=3); stripe.pack(side='left', fill='y')
         lab = tk.Label(row, text='   ' + txt, compound='left', anchor='w', font=('Segoe UI', 10), padx=10, cursor='hand2')
         lab.pack(side='left', fill='both', expand=True)
@@ -276,6 +304,7 @@ class App(tk.Tk):
             else: p.pack_forget()
         self.cur = key; self.ph.configure(text=self.TITLES[key][0]); self.phs.configure(text=self.TITLES[key][1])
         if hasattr(self, 'P'): self._paint_rail()
+        if hasattr(self, 'pbox'): self._bars()
 
     def _icon(self, name, size, color):
         im = ui_icons.photo(name, int(size * self._s), color); self._img.append(im); return im
@@ -326,9 +355,15 @@ class App(tk.Tk):
                      selectforeground='#FFFFFF', fieldbackground=P['field'], insertcolor=P['text'], arrowcolor=P['accent'])
         st.map('.', background=[('disabled', P['card'])], foreground=[('disabled', P['distext'])])
         st.configure('TFrame', background=P['card'])
-        st.configure('Seg.TFrame', background=P['seg'])
+        st.configure('Seg.TFrame', background=P['card'])
         st.configure('TLabel', background=P['card'], foreground=P['text'])
         st.configure('Hint.TLabel', background=P['card'], foreground=P['text2'])
+        # таблиці (Процеси, точки прив'язки): тло поля, як у списків, а не біле
+        st.configure('Treeview', background=P['field'], fieldbackground=P['field'], foreground=P['text'],
+                     bordercolor=P['sep'], lightcolor=P['field'], darkcolor=P['field'], rowheight=int(24 * self._s))
+        st.map('Treeview', background=[('selected', P['accent'])], foreground=[('selected', '#FFFFFF')])
+        st.configure('Treeview.Heading', background=P['seg'], foreground=P['text2'], bordercolor=P['sep'], relief='flat')
+        st.map('Treeview.Heading', background=[('active', P['seg'])])
         st.configure('Num.TLabel', background=P['fill'], foreground=P['accent'], font=FB)
         st.configure('Link.TButton', background=P['card'], foreground=P['accent'], bordercolor=P['card'], lightcolor=P['card'],
                      darkcolor=P['card'], focuscolor=P['card'], relief='flat', borderwidth=0, padding=(0, 0), font=F)
@@ -343,8 +378,9 @@ class App(tk.Tk):
                    foreground=[('disabled', P['distext'])], relief=[('pressed', 'flat')])
         btn('TButton', P['fill'], P['fill_hi'], P['accent'])
         btn('Accent.TButton', P['accent'], P['accent_hi'], '#FFFFFF', pad=(18, 7))
-        btn('Seg.TButton', P['seg'], P['seg'], P['text2'], F, (12, 3))
-        btn('SegOn.TButton', P['segon'], P['segon'], P['text'], FB, (12, 3))
+        # перемикач теми — лише значки без тла (вимога користувача 27.11.2026); активна — значок кольору акценту
+        btn('Seg.TButton', P['card'], P['card'], P['text2'], F, (7, 3))
+        btn('SegOn.TButton', P['card'], P['card'], P['text'], FB, (7, 3))
 
         for n in ('TEntry', 'TCombobox'):
             st.configure(n, fieldbackground=P['field'], background=P['field'], foreground=P['text'], bordercolor=P['field'],
@@ -375,7 +411,7 @@ class App(tk.Tk):
             tx.configure(bg=P['field'], fg=P['text'], insertbackground=P['text'], selectbackground=P['sel'],
                          selectforeground=P['text'], highlightthickness=0, bd=0, relief='flat', padx=8, pady=6)
         self.cv10.configure(bg=P['field'], highlightthickness=0, bd=0)
-        for lb in (self.lb1, self.lb6, self.lb11):  # усі списки файлів — однаково з темою
+        for lb in (self.lb1, self.lb6, self.lb11, self.lb13):  # усі списки файлів — однаково з темою
             lb.configure(bg=P['field'], fg=P['text'], selectbackground=P['accent'], selectforeground='#FFFFFF',
                          highlightthickness=0, bd=0, relief='flat', activestyle='none', font=F)
         self.log.configure(bg=P['card'], fg=P['text'], insertbackground=P['text'], selectbackground=P['sel'],
@@ -398,7 +434,7 @@ class App(tk.Tk):
         # іконки кольором теми
         self._img = []
         for w, ic, role, size in self._icon_w:
-            if role.startswith('seg:'): col = P['text'] if role[4:] == self.mode else P['text2']
+            if role.startswith('seg:'): col = P['accent'] if role[4:] == self.mode else P['text2']
             else: col = '#FFFFFF' if role == 'white' else P['accent']
             w.configure(image=self._icon(ic, size, col))
         self._paint_rail()
@@ -636,7 +672,23 @@ class App(tk.Tk):
         self.cp7 = self._btn(b, 'Копіювати координати', 'copy', self.copy7, state='disabled'); self.cp7.pack(side='left', padx=8)
         ttk.Label(f, style='Hint.TLabel', text='Координати передаються в Google лише після натиснення «Відкрити».\n'
                   'СК-63 — наближено (кілька метрів), для пошуку місця, не для перерахунку.').grid(row=2, column=0, sticky='w', pady=(8, 0))
-        self.loc7 = None
+        self.loc7 = None; self.lay7 = {}
+        f = self._panel(pg, 'Межа і ЦЗ', 'target')
+        NO = '— немає —'; self.NO7 = NO
+        ttk.Label(f, text='Шар межі ДПТ (замкнені контури)').grid(row=0, column=0, sticky='w')
+        ttk.Label(f, text='Шар укриттів (точки, блоки, контури)').grid(row=0, column=1, sticky='w', padx=(16, 0))
+        self.bl7 = ttk.Combobox(f, values=[NO], width=34, state='readonly'); self.bl7.set(NO); self.bl7.grid(row=1, column=0, sticky='w')
+        self.sl7 = ttk.Combobox(f, values=[NO], width=34, state='readonly'); self.sl7.set(NO); self.sl7.grid(row=1, column=1, sticky='w', padx=(16, 0))
+        c = ttk.Frame(f); c.grid(row=2, column=0, columnspan=2, sticky='w', pady=(10, 0))
+        self.k7 = {k: tk.BooleanVar(value=True) for k in ('shelter_dxf', 'shelter_osm', 'fire', 'hospital')}
+        for i, k in enumerate(self.k7):
+            ttk.Checkbutton(c, text=cz_routes.KINDS[k][0], variable=self.k7[k]).grid(row=0, column=i, sticky='w', padx=(0, 16))
+        b = ttk.Frame(f); b.grid(row=3, column=0, columnspan=2, sticky='w', pady=(10, 0))
+        self.kb7 = self._btn(b, 'Межа → KML (Google Earth)', 'globe', self.kml7, state='disabled'); self.kb7.pack(side='left')
+        self.cz7 = self._btn(b, 'Відстані ЦЗ', 'play', self.cz7run, primary=True, state='disabled'); self.cz7.pack(side='left', padx=8)
+        ttk.Label(f, style='Hint.TLabel', text='Відстані — від центру межі (або зйомки) по дорогах: OSRM, об\'єкти — OpenStreetMap, адреси — Nominatim.\n'
+                  'У мережу йдуть лише координати WGS-84. Результат: «… (ЦЗ).txt» і «… (ЦЗ).dxf» у системі зйомки.'
+                  ).grid(row=4, column=0, columnspan=2, sticky='w', pady=(8, 0))
 
     def pick7(self):
         p = filedialog.askopenfilename(title='Зйомка', filetypes=[('DXF / DWG', '*.dxf *.dwg'), ('Усі', '*.*')])
@@ -663,7 +715,49 @@ class App(tk.Tk):
                % (r['system'], r['lat'], r['lon'], r['E'], r['N'], '  (DXF у мм → ×0,001)' if r['k'] != 1 else '', r['span'], r['n']))
         if r['others']: txt += '\nМожливі також: ' + ', '.join(r['others'])
         self.res7.configure(text=txt); self.go7.configure(state='normal'); self.cp7.configure(state='normal')
+        def lj():
+            try: L = cz_routes.layers(p)
+            except Exception as e: L = {}; self.q.put('УВАГА: шари не прочитано: %s' % e)
+            self.q.put(lambda: self._layers7(L))
+        threading.Thread(target=lj, daemon=True).start()
         self.say('Карта: %s — %s' % (os.path.basename(p), r['system']))
+
+    def _layers7(self, L):
+        self.lay7 = L; NO = self.NO7
+        closed = sorted(k for k, (c, n) in L.items() if c)
+        self.bl7.configure(values=[NO] + closed); self.sl7.configure(values=[NO] + sorted(L))
+        guess = [k for k in closed if re.search(r'меж|границ|border|bound', k, re.I)]
+        self.bl7.set(guess[0] if guess else NO)
+        sg = [k for k in L if re.search(r'укрит|сховищ|shelter|ЦЗ', k, re.I)]
+        self.sl7.set(sg[0] if sg else NO)
+        self.kb7.configure(state='normal' if closed else 'disabled'); self.cz7.configure(state='normal')
+
+    def _sys7(self):
+        return self.loc7['system'] if self.loc7 else None
+
+    def kml7(self):
+        p = self.mf7.get().strip(); lay = self.bl7.get()
+        if lay == self.NO7: messagebox.showinfo('Межа', 'Виберіть шар межі.'); return
+        sysn = self._sys7(); self.say('\n=== Межа → KML: %s, шар «%s»' % (os.path.basename(p), lay))
+        def job():
+            dst, s, n, a = cz_routes.boundary_kml(p, lay, sysn)
+            self.q.put('ГОТОВО: %s — контурів %d, площа %.4f га (%s)' % (dst, n, a / 10000, s))
+        self._bg(job, 'Межа → KML')
+
+    def cz7run(self):
+        p = self.mf7.get().strip(); kinds = [k for k, v in self.k7.items() if v.get()]
+        if not kinds: messagebox.showinfo('ЦЗ', 'Позначте, до чого рахувати відстані.'); return
+        sl = self.sl7.get(); bl = self.bl7.get()
+        if 'shelter_dxf' in kinds and sl == self.NO7:
+            kinds.remove('shelter_dxf'); self.say('УВАГА: шар укриттів не вибрано — укриття зі зйомки пропущено.')
+        if not kinds: return
+        sysn = self._sys7(); self.say('\n=== Відстані ЦЗ: %s' % os.path.basename(p))
+        def job():
+            r = cz_routes.compute(p, kinds, sysn, None if bl == self.NO7 else bl, None if sl == self.NO7 else sl,
+                                  log=self.q.put, progress=lambda v: self.setp(100 * v))
+            for l in r['lines'][5:]: self.q.put('   ' + l)
+            self.q.put('ГОТОВО: %s, %s' % (os.path.basename(r['txt']), os.path.basename(r['dxf'])))
+        self._bg(job, 'Відстані ЦЗ')
 
     def open7(self):
         if not self.loc7: return
@@ -943,6 +1037,86 @@ class App(tk.Tk):
             self.q.put('ГОТОВО: %d з %d' % (ok, len(files)) if ok == len(files) else 'УВАГА: очищено %d з %d' % (ok, len(files)))
         self._bg(job)
 
+    # ---------- сторінка 12: кадастр — обмінний файл XML ДЗК ----------
+    def _tab12(self):
+        pg = self.pages['p12']
+        f = self._panel(pg, 'Обмінний файл ДЗК', 'parcel')
+        ttk.Label(f, style='Hint.TLabel', text='XML ДЗК (від землевпорядника / з кадастрової справи) → DXF R12: межа, угіддя, обмеження,\n'
+                  'оренда, точки з номерами + TXT із площею, ЦП і к.н. Офлайн — у мережу нічого не надсилається.'
+                  ).grid(row=0, column=0, columnspan=2, sticky='w', pady=(0, 6))
+        self.f12 = tk.StringVar(); ttk.Entry(f, textvariable=self.f12).grid(row=1, column=0, sticky='ew')
+        self._btn(f, 'Вибрати…', 'folder', lambda: self._pick(self.f12, [('XML ДЗК', '*.xml'), ('Усі', '*.*')])).grid(row=1, column=1, padx=(8, 0))
+        ttk.Label(f, text='Система координат DXF').grid(row=2, column=0, sticky='w', pady=(10, 2))
+        self.s12 = ttk.Combobox(f, values=['Як у файлі (без перерахунку)'] + geo.systems(), width=40, state='readonly')
+        self.s12.set('Як у файлі (без перерахунку)'); self.s12.grid(row=3, column=0, sticky='w')
+        f.columnconfigure(0, weight=1)
+        a = tk.Frame(pg); a.pack(fill='x', pady=(0, 12)); self._reg(a, 'bg')
+        self._btn(a, 'Перетворити в DXF', 'play', self.run12, primary=True).pack(side='left')
+        f = self._panel(pg, 'Ділянка на карті', 'globe')
+        ttk.Label(f, text='Кадастровий номер').grid(row=0, column=0, sticky='w')
+        r = ttk.Frame(f); r.grid(row=1, column=0, columnspan=2, sticky='w')
+        self.kn12 = tk.StringVar(); ttk.Entry(r, textvariable=self.kn12, width=30).pack(side='left')
+        self._btn(r, 'Відкрити на kadastr.com.ua', 'globe', self.open12).pack(side='left', padx=(8, 0))
+        ttk.Label(f, style='Hint.TLabel', text='Номер передається на сайт лише після натиснення кнопки. Номер із XML підставляється сам.'
+                  ).grid(row=2, column=0, columnspan=2, sticky='w', pady=(8, 0))
+
+    def run12(self):
+        p = self.f12.get().strip()
+        if not p or not os.path.exists(p): messagebox.showinfo('Кадастр', 'Виберіть XML-файл ДЗК.'); return
+        s = self.s12.get(); s = None if s.startswith('Як у') else s
+        self.say('\n=== XML ДЗК %s' % os.path.basename(p))
+        def job():
+            r = dzk_xml.to_dxf(p, s)
+            for l in r['lines']: self.q.put('   ' + l)
+            if r['kn']: self.q.put(lambda: self.kn12.set(r['kn']))
+            self.q.put('ГОТОВО: %s' % r['dxf'])
+        self._bg(job)
+
+    def open12(self):
+        try: url = dzk_xml.kn_url(self.kn12.get())
+        except ValueError as e: messagebox.showinfo('Кадастр', str(e)); return
+        import webbrowser; webbrowser.open(url)
+
+    # ---------- сторінка 13: перевірка ПЗ ----------
+    def _tab13(self):
+        pg = self.pages['p13']
+        f = self._panel(pg, 'Пояснювальна записка', 'check')
+        ttk.Label(f, style='Hint.TLabel', text='DOCX — кнопкою або перетягніть у вікно. Звіт «… (перевірка).txt» поруч; оригінал не змінюється.\n'
+                  'Перевіряє: латиницю в шифрах норм, змішані слова, залишки чатів/ШІ, заглушки, виділення, червоний текст,\n'
+                  'коментарі й рецензування, метадані, нумерацію таблиць і рисунків, подвійні пробіли.'
+                  ).grid(row=0, column=0, columnspan=2, sticky='w', pady=(0, 6))
+        self.lb13 = tk.Listbox(f, height=4, selectmode='extended'); self.lb13.grid(row=1, column=0, sticky='nsew')
+        b = ttk.Frame(f); b.grid(row=1, column=1, sticky='n', padx=(8, 0))
+        self._btn(b, 'Додати…', 'plus', self.add13).pack(fill='x')
+        self._btn(b, 'Прибрати', 'minus', lambda: [self.lb13.delete(i) for i in reversed(self.lb13.curselection())]).pack(fill='x', pady=(4, 0))
+        f.columnconfigure(0, weight=1)
+        self.fx13 = tk.BooleanVar(value=True)
+        ttk.Checkbutton(f, text='Створити виправлену копію «… (виправлено).docx» (латиниця в шифрах і словах, жовте виділення)',
+                        variable=self.fx13).grid(row=2, column=0, columnspan=2, sticky='w', pady=(8, 0))
+        a = tk.Frame(pg); a.pack(fill='x', pady=(0, 6)); self._reg(a, 'bg')
+        self._btn(a, 'Перевірити', 'play', self.run13, primary=True).pack(side='left')
+
+    def add13(self, paths=None):
+        paths = paths if paths is not None else filedialog.askopenfilenames(title='ПЗ', filetypes=[('Word', '*.docx'), ('Усі', '*.*')])
+        for p in paths:
+            if p.lower().endswith('.docx') and p not in self.lb13.get(0, 'end'): self.lb13.insert('end', p)
+
+    def run13(self):
+        files = list(self.lb13.get(0, 'end')); fix = self.fx13.get()
+        if not files: messagebox.showinfo('Перевірка ПЗ', 'Додайте DOCX.'); return
+        self.say('\n=== Перевірка ПЗ: %d файл(ів)' % len(files))
+        def job():
+            for i, p in enumerate(files, 1):
+                try:
+                    txt, out, n = pz_check.report(p, fix)
+                    self.q.put('%s: зауважень %d → %s%s' % (os.path.basename(p), n, os.path.basename(txt),
+                                                           ', ' + os.path.basename(out) if out else ''))
+                except Exception as e:
+                    self.q.put('ПОМИЛКА %s: %s' % (os.path.basename(p), e))
+                self.setp(100.0 * i / len(files))
+            self.q.put('ГОТОВО')
+        self._bg(job)
+
     # ---------- перетягування файлів у вікно (tkinterdnd2; без нього — лише кнопки) ----------
     def _dnd_setup(self):
         """Файли, перетягнуті на вікно, ідуть на відкриту сторінку: PDF → p6, DXF/DWG → p7, DXF → p1."""
@@ -965,6 +1139,10 @@ class App(tk.Tk):
                 ps = [p for p in ps if p.lower().endswith(IMG_EXT)]
                 if ps: self.load10(ps[0])
             elif self.cur == 'p11': self.add11(ps)
+            elif self.cur == 'p13': self.add13(ps)
+            elif self.cur == 'p12':
+                ps = [p for p in ps if p.lower().endswith('.xml')]
+                if ps: self.f12.set(ps[0])
             elif self.cur == 'p1':
                 for p in ps:
                     if p.lower().endswith('.dxf') and p not in self.lb1.get(0, 'end'): self.lb1.insert('end', p)
@@ -1135,18 +1313,122 @@ class App(tk.Tk):
             pass
         self.after(100, self._pump)
 
-    def _bg(self, fn):
+    def _bg(self, fn, name=None):
+        """Фоновий процес відкритої сторінки з власною шкалою; name — підпис (типово — назва сторінки)."""
+        jid = self._job_start(name)
         def w():
+            self._tl.job = jid; ok = True
             try: fn()
             except Exception as e:
-                self.q.put('ПОМИЛКА: %s' % e); self.q.put(traceback.format_exc().splitlines()[-1])
+                ok = False; self.q.put('ПОМИЛКА: %s' % e); self.q.put(traceback.format_exc().splitlines()[-1])
+            self.q.put(lambda: self._job_end(jid, ok))
         threading.Thread(target=w, daemon=True).start()
 
-    # ---------- прогрес ----------
-    def setp(self, v):
-        v = max(0.0, min(100.0, v))
-        def u(): self.pb['value'] = v; self.pct['text'] = '%d %%' % round(v)
+    # ---------- процеси: шкали лише на своїй сторінці + загальний список на «Процеси» ----------
+    def _job_start(self, name=None):
+        page = self.cur or 'p0'; name = name or self.TITLES.get(page, ('Процес',))[0]
+        same = sum(1 for j in self._jobs.values() if j['state'] == 'run' and j['page'] == page)
+        if same: name = '%s (%d)' % (name, same + 1)
+        self._jn += 1; jid = self._jn
+        self._jobs[jid] = dict(page=page, name=name, v=0.0, state='run', t0=time.time(), t1=None)
+        self._bars(); self._jobs_view()
+        return jid
+
+    def _job_end(self, jid, ok=True):
+        j = self._jobs.get(jid)
+        if not j: return
+        j['state'] = 'ok' if ok else 'err'; j['t1'] = time.time()
+        if ok: j['v'] = 100.0
+        self._bars(); self._jobs_view()
+        self.after(4000, self._bars)  # зайві завершені рядки сторінки прибрати
+
+    def _page_jobs(self, page):
+        """Що показати на сторінці: її активні процеси й щойно (< 4 с) завершені; інакше — останній завершений."""
+        js = [(k, j) for k, j in self._jobs.items() if j['page'] == page]
+        show = [(k, j) for k, j in js if j['state'] == 'run' or time.time() - j['t1'] < 3.9]
+        return show or js[-1:]
+
+    def _bars(self):
+        """Перебудувати шкали відкритої сторінки (на «Процеси» шкал немає — там таблиця)."""
+        ids = [] if self.cur == 'p0' else ([k for k, _ in self._page_jobs(self.cur)] or [0])
+        for k in list(self._rows):
+            if k not in ids: self._rows.pop(k)['row'].destroy()
+        for k in ids:
+            if k not in self._rows:
+                r = tk.Frame(self.pbox); r.pack(fill='x', pady=1); self._reg(r, 'bg')
+                lab = tk.Label(r, width=30, anchor='w', font=('Segoe UI', 10)); lab.pack(side='left', padx=(0, 8))
+                self._reg(lab, 'bg', 'text2')
+                pb = ttk.Progressbar(r, maximum=100); pb.pack(side='left', fill='x', expand=True)
+                pct = tk.Label(r, width=8, anchor='e', font=('Segoe UI', 10)); pct.pack(side='left', padx=(8, 0))
+                self._reg(pct, 'bg', 'text2')
+                self._rows[k] = dict(row=r, lab=lab, pb=pb, pct=pct)
+            self._paint_row(k)
+
+    def _paint_row(self, k):
+        w = self._rows.get(k)
+        if not w: return
+        j = self._jobs.get(k)
+        if not j:
+            w['lab'].configure(text='Немає активних процесів'); w['pb']['value'] = 0; w['pct'].configure(text='0 %'); return
+        w['lab'].configure(text=j['name'] + {'run': '', 'ok': ' — готово', 'err': ' — помилка'}[j['state']])
+        w['pb']['value'] = j['v']; w['pct'].configure(text='помилка' if j['state'] == 'err' else '%d %%' % round(j['v']))
+
+    def setp(self, v, job=None):
+        v = max(0.0, min(100.0, v)); jid = job or getattr(self._tl, 'job', None)
+        def u():
+            if jid in self._jobs: k = jid
+            else:  # виклик поза процесом — до активного процесу відкритої сторінки, якщо він один
+                live = [k for k, j in self._jobs.items() if j['state'] == 'run' and j['page'] == self.cur]
+                if len(live) != 1: return
+                k = live[0]
+            self._jobs[k]['v'] = v; self._paint_row(k); self._jobs_view(k)
         self.q.put(u)
+
+    # ---------- сторінка 0: процеси (стартова) ----------
+    def _tab0(self):
+        pg = self.pages['p0']
+        f = self._panel(pg, 'Процеси сеансу', 'activity')
+        ttk.Label(f, style='Hint.TLabel', text='Шкала процесу — на його сторінці; тут — усі процеси разом. '
+                  'Подвійне клацання — перейти до сторінки процесу.').grid(row=0, column=0, sticky='w', pady=(0, 6))
+        self.tv0 = ttk.Treeview(f, columns=('n', 's', 'p', 'st', 't'), show='headings', height=9, selectmode='browse')
+        for c, t, w, a in (('n', 'Процес', 260, 'w'), ('s', 'Розділ', 170, 'w'), ('p', '%', 60, 'e'), ('st', 'Стан', 100, 'w'),
+                           ('t', 'Початок · тривалість', 150, 'w')):
+            self.tv0.heading(c, text=t, anchor=a); self.tv0.column(c, width=w, anchor=a, stretch=c == 'n')
+        self.tv0.grid(row=1, column=0, sticky='ew'); f.columnconfigure(0, weight=1)
+        self.tv0.bind('<Double-1>', self._go0)
+        self.st0 = ttk.Label(f, style='Hint.TLabel', text='Процесів ще не було.'); self.st0.grid(row=2, column=0, sticky='w', pady=(8, 0))
+        f = self._panel(pg, 'Програма', 'refresh')
+        self.ver0 = ttk.Label(f, style='Hint.TLabel', text='URBAN %s' % VERSION, justify='left'); self.ver0.grid(row=0, column=0, sticky='w')
+        self._btn(f, 'Оновлення…', 'refresh', lambda: self.show('p5')).grid(row=1, column=0, sticky='w', pady=(8, 0))
+        self._tick0()
+
+    def _jobs_view(self, only=None):
+        if not hasattr(self, 'tv0'): return
+        now = time.time()
+        for k, j in self._jobs.items():
+            if only and k != only: continue
+            dt = int((j['t1'] or now) - j['t0'])
+            vals = (j['name'], self.TITLES.get(j['page'], ('',))[0], '%d %%' % round(j['v']),
+                    {'run': 'працює', 'ok': 'готово', 'err': 'помилка'}[j['state']],
+                    '%s · %d:%02d' % (time.strftime('%H:%M:%S', time.localtime(j['t0'])), dt // 60, dt % 60))
+            iid = 'j%d' % k
+            if self.tv0.exists(iid): self.tv0.item(iid, values=vals)
+            else: self.tv0.insert('', 0, iid=iid, values=vals)
+        run = sum(j['state'] == 'run' for j in self._jobs.values()); err = sum(j['state'] == 'err' for j in self._jobs.values())
+        self.st0.configure(text='Активних: %d · завершено: %d · з помилкою: %d' % (run, len(self._jobs) - run - err, err)
+                           if self._jobs else 'Процесів ще не було.')
+
+    def _tick0(self):  # хвилинник активних процесів і стан оновлення
+        if any(j['state'] == 'run' for j in self._jobs.values()): self._jobs_view()
+        up = getattr(self, 'upd', None)
+        self.ver0.configure(text='URBAN %s · %s' % (VERSION, 'доступне оновлення %s' % up['version'] if up
+                                                     else 'нових версій не знайдено або ще не перевірено'))
+        self.after(1000, self._tick0)
+
+    def _go0(self, e):
+        sel = self.tv0.selection()
+        j = self._jobs.get(int(sel[0][1:])) if sel else None
+        if j: self.show(j['page'])
 
     def _run(self, args, lo=0.0, hi=100.0, marks=None):
         """Запуск скрипта з прогресом: marks {підрядок у виводі: частка 0..1}; між мітками шкала повільно росте."""
@@ -1154,7 +1436,9 @@ class App(tk.Tk):
         p = subprocess.Popen(py_cmd(args[0]) + args[1:], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                              encoding='utf-8', errors='replace', creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
         state = {'f': 0.0, 'cap': min(marks.values()) if marks else 0.9}
+        jid = getattr(self._tl, 'job', None)
         def creep():
+            self._tl.job = jid
             while p.poll() is None:
                 if state['f'] < state['cap'] - 0.01:
                     state['f'] += (state['cap'] - state['f']) * 0.04; self.setp(lo + (hi - lo) * state['f'])
