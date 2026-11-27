@@ -23,8 +23,10 @@ $cl = [IO.File]::ReadAllText((Join-Path $root 'CHANGELOG.md'), [Text.Encoding]::
 $m = [regex]::Match($cl, "(?ms)^## $([regex]::Escape($ver))\b[^\n]*\n(.*?)(?=^## |\z)")
 if (-not $m.Success -or -not $m.Groups[1].Value.Trim()) { throw "У CHANGELOG.md немає розділу «## $ver»" }
 $notes = $m.Groups[1].Value.Trim()
-& $gh auth status 2>$null | Out-Null
-if ($LASTEXITCODE -ne 0) { throw 'gh не увійшов у GitHub: gh auth login --web' }
+if (-not $DryRun) {
+  & $gh auth status 2>$null | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw 'gh не увійшов у GitHub: gh auth login --web' }
+}
 
 # 2. Тести
 python -m unittest discover -s tests
