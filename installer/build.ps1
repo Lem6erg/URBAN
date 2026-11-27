@@ -6,6 +6,8 @@ $ErrorActionPreference = 'Stop'
 $here  = Split-Path -Parent $MyInvocation.MyCommand.Path
 $tools = Split-Path -Parent $here
 $work  = Join-Path $env:TEMP 'URBAN_build'
+New-Item -ItemType Directory -Force -Path $work | Out-Null
+Set-Location -LiteralPath $work; [Environment]::CurrentDirectory = $work  # PyInstaller не запускається з System32 (дочірній powershell)
 $ver = (python -I -c "import sys; sys.path.insert(0, sys.argv[1]); import version; print(version.VERSION)" $tools).Trim()
 if ($ver -notmatch '^\d+\.\d+\.\d+$') { throw "version.py: некоректна версія '$ver'" }
 Write-Host "URBAN $ver"

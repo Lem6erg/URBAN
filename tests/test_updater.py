@@ -72,8 +72,9 @@ class Download(unittest.TestCase):
         good = hashlib.sha256(cls.payload).hexdigest()
         with open(os.path.join(cls.dir, 'good.sha256'), 'w') as f: f.write(good + '  URBAN_Setup.exe\n')
         with open(os.path.join(cls.dir, 'bad.sha256'), 'w') as f: f.write('0' * 64 + '  URBAN_Setup.exe\n')
-        h = functools.partial(http.server.SimpleHTTPRequestHandler, directory=cls.dir)
-        h.log_message = lambda *a: None
+        class Quiet(http.server.SimpleHTTPRequestHandler):
+            def log_message(self, *a): pass
+        h = functools.partial(Quiet, directory=cls.dir)
         cls.srv = http.server.ThreadingHTTPServer(('127.0.0.1', 0), h)
         threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
         cls.base = 'http://127.0.0.1:%d/' % cls.srv.server_address[1]
