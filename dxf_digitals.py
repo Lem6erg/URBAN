@@ -25,7 +25,7 @@ dst = sys.argv[3] if len(sys.argv) > 3 else os.path.splitext(src)[0] + ' (МСК
 L = open(src, encoding='cp1251', errors='replace').read().split('\n')
 P = [(L[i].strip(), L[i + 1].rstrip('\r')) for i in range(0, len(L) - 1, 2)]
 
-units, sec, hv = 4, None, None
+units, sec, hv = None, None, None  # $INSUNITS; немає / 0 → визначити за розміром креслення відносно топо
 E, cur, laycol = [], None, {}
 for i, (c, v) in enumerate(P):
     if c == '0':
@@ -57,20 +57,30 @@ for i, (c, v) in enumerate(P):
     elif t in ('MTEXT', 'TEXT') and c == '50': cur['ang'] = float(v)
 E = [e for e in E if e['t'] != 'LAYER' and e['pts']]
 print('прочитано: %d об\'єктів' % len(E))
-k = {4: 0.001, 6: 1.0, 5: 0.01}.get(units)
-if k is None: raise SystemExit('Невідомі одиниці $INSUNITS=%s' % units)
-for e in E:
-    e['pts'] = [[x * k, y * k] for x, y in e['pts']]; e['h'] *= k
-
-# --- зсув до топо ---
 hdr, raw = D.load(dmf); start, objs = D.find_objects(raw); names = D.layer_names(raw, start)
 TV = np.array([(ea, n) for o in objs if 'JSON' in names[o['code'] + 3]
                for n, ea in o['verts'] if abs(n - D.BREAK) > 1])
 # прив'язка — лише по існуючих межах (шар 1-x «Межі ділянок», узятий з топо); проєктні 2-x не збігаються з топо
-S = np.array([p for e in E if 'Межі ділянок' in e['layer'] and e['layer'].startswith('1-') and e['t'] == 'LWPOLYLINE' for p in e['pts']])
-if not len(S):
-    S = np.array([p for e in E if 'Межі ділянок' in e['layer'] and e['t'] == 'LWPOLYLINE' for p in e['pts']])
+def parcels():
+    s = np.array([p for e in E if 'Межі ділянок' in e['layer'] and e['layer'].startswith('1-') and e['t'] == 'LWPOLYLINE' for p in e['pts']])
+    if not len(s):
+        s = np.array([p for e in E if 'Межі ділянок' in e['layer'] and e['t'] == 'LWPOLYLINE' for p in e['pts']])
+    return s
+S = parcels()
 if not len(S): raise SystemExit('У DXF немає шару «Межі ділянок» — нема по чому прив\'язати')
+
+# --- одиниці: $INSUNITS 4 мм, 5 см, 6 м; не вказано / 0 — за розміром ділянок відносно топо ---
+k = {4: 0.001, 6: 1.0, 5: 0.01}.get(units)
+if k is None:
+    if units not in (None, 0): raise SystemExit('Невідомі одиниці $INSUNITS=%s' % units)
+    span = lambda A: max(float(np.max(A.max(0) - A.min(0))), 1e-9)
+    k = min((1.0, 0.01, 0.001), key=lambda c: abs(math.log(span(S) * c / span(TV))))
+    print('одиниці в DXF не вказано — визначено за розміром креслення: ×%g' % k)
+for e in E:
+    e['pts'] = [[x * k, y * k] for x, y in e['pts']]; e['h'] *= k
+S = S * k
+
+# --- зсув до топо ---
 def nn(X):
     d = np.empty(len(X)); ii = np.empty(len(X), int)
     for a in range(0, len(X), 400):
