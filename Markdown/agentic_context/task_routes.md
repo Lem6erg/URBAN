@@ -44,6 +44,12 @@
 1. [build.ps1](../../installer/build.ps1), [URBAN.iss](../../installer/URBAN.iss); BOM для `.ps1`/`.iss`.
 2. Після правок коду інсталятор сам не оновлюється — збирати, якщо задача стосується видачі.
 
+## 6а. Випуск нової версії / оновлення
+
+1. [ТЗ оновлення](../urban_autoupdate_spec.md), [updater](../../updater.py), [release.ps1](../../installer/release.ps1).
+2. `version.py` → `CHANGELOG.md` → коміт → `release.ps1` (лише за командою користувача).
+3. Тести: `python -m unittest discover -s tests -v`; оновлення наживо — встановлена стара версія знаходить нову.
+
 ## 7. Нова функція або архітектурне рішення
 
 Gate 0 лише читанням → `/grill-me` → DECISIONS LOCKED → ТЗ `Markdown/urban_<тема>_spec.md` → реалізація → TODO.

@@ -24,6 +24,12 @@ python dmf2dxf.py topo.dmf topo.dxf [--shift X Y]
 python dxf_digitals.py export.dxf topo.dmf [out.dxf]
 ```
 
+## Встановлення й оновлення
+
+Завантажте `URBAN_Setup.exe` з [останнього випуску](https://github.com/Lem6erg/URBAN/releases/latest) і запустіть
+(права адміністратора не потрібні). Далі програма сама раз на добу перевіряє нову версію й пропонує її встановити;
+вручну — розділ «Оновлення» в меню. Налаштування й ключі систем координат зберігаються.
+
 ## Інсталятор
 
 ```powershell

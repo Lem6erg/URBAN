@@ -8,6 +8,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import crs
 import ui_icons
+import updater
+from version import VERSION
 from dxf_digitals_drop import find_dmf
 
 SAME = 'Як у топо (без перерахунку)'
@@ -149,11 +151,13 @@ class App(tk.Tk):
     # меню-рейка (як в ATLAS): групи, іконки, активний пункт — смуга акценту
     RAIL = [('КОНВЕРТАЦІЯ', [('p1', 'layers', 'Archicad → Digitals'), ('p2', 'convert', 'DMF → DXF')]),
             ('КООРДИНАТИ', [('p3', 'target', 'Ключ за пунктами')]),
-            ('ARCHICAD', [('p4', 'plug', 'Транслятор')])]
+            ('ARCHICAD', [('p4', 'plug', 'Транслятор')]),
+            ('ПРОГРАМА', [('p5', 'refresh', 'Оновлення')])]
     TITLES = {'p1': ('Archicad DXF → Digitals', 'DXF з Archicad → система топо, кольори шарів, DXF R12 для Digitals'),
               'p2': ('DMF → DXF', 'Топо Digitals → DXF R12 для Archicad чи CAD'),
               'p3': ('Ключ за пунктами', 'Перехід між системами координат за спільними пунктами (СК-63 тощо)'),
-              'p4': ('Транслятор Archicad', 'Підключення «07 Для Digitals (МСК)» в Archicad і експорт DXF')}
+              'p4': ('Транслятор Archicad', 'Підключення «07 Для Digitals (МСК)» в Archicad і експорт DXF'),
+              'p5': ('Оновлення', 'Версія програми, що нового, оновлення з GitHub')}
 
     def __init__(self):
         dpi_aware()
@@ -189,8 +193,10 @@ class App(tk.Tk):
             h = tk.Label(rail, text=g, font=('Segoe UI Semibold', 8), anchor='w'); h.pack(fill='x', padx=20, pady=(14 if not gi else 8, 4))
             self._reg(h, 'card', 'text2')
             for key, ic, txt in items: self._rail_item(key, ic, txt)
-        ver = tk.Label(rail, text='URBAN 1.0', font=('Segoe UI', 8), anchor='w'); ver.pack(side='bottom', fill='x', padx=20, pady=12)
+        ver = self.verlab = tk.Label(rail, text='URBAN ' + VERSION, font=('Segoe UI', 8), anchor='w', cursor='hand2')
+        ver.pack(side='bottom', fill='x', padx=20, pady=12); ver.bind('<Button-1>', lambda e: self.show('p5'))
         self._reg(ver, 'card', 'text2')
+        self.upd = None  # знайдене оновлення {version, notes, url, sha_url}
         # вміст
         main = tk.Frame(body); main.pack(side='left', fill='both', expand=True); self._reg(main, 'bg')
         hd = tk.Frame(main); hd.pack(fill='x', padx=26, pady=(18, 10)); self._reg(hd, 'bg')
@@ -198,9 +204,9 @@ class App(tk.Tk):
         self.phs = tk.Label(hd, font=('Segoe UI', 10), anchor='w'); self.phs.pack(anchor='w'); self._reg(self.phs, 'bg', 'text2')
         box = tk.Frame(main); box.pack(fill='x', padx=26); self._reg(box, 'bg')
         self.pages = {}
-        for k in ('p1', 'p2', 'p3', 'p4'):
+        for k in ('p1', 'p2', 'p3', 'p4', 'p5'):
             self.pages[k] = tk.Frame(box); self._reg(self.pages[k], 'bg')
-        self._tab1(); self._tab2(); self._tab3(); self._tab4()
+        self._tab1(); self._tab2(); self._tab3(); self._tab4(); self._tab5()
         pf = tk.Frame(main); pf.pack(fill='x', padx=26, pady=(4, 8)); self._reg(pf, 'bg')
         self.pb = ttk.Progressbar(pf, maximum=100); self.pb.pack(side='left', fill='x', expand=True)
         self.pct = tk.Label(pf, text='0 %', width=6, anchor='e', font=('Segoe UI', 10)); self.pct.pack(side='left', padx=(8, 0))
@@ -212,7 +218,7 @@ class App(tk.Tk):
         keys = crs.systems()
         self.say('Системи: ' + (', '.join(keys) if keys else 'немає (crs_keys.json)') + '. МСК-46 ↔ УСК-2000 — точно (одна основа, EPSG). СК-63 — лише з офіційним ключем.')
         if not os.path.exists(self.trp): self.say('УВАГА: файл транслятора не знайдено: %s' % self.trp)
-        self.after(100, self._pump); self.after(3000, self._watch)
+        self.after(100, self._pump); self.after(3000, self._watch); self.after(2500, self._auto_update)
 
     # ---------- каркас: реєстр кольорів, панелі, рейка ----------
     def _reg(self, w, bg, fg=None):
@@ -349,6 +355,8 @@ class App(tk.Tk):
                            highlightthickness=0, bd=0, relief='flat', activestyle='none', font=F)
         self.log.configure(bg=P['card'], fg=P['text'], insertbackground=P['text'], selectbackground=P['sel'],
                            selectforeground=P['text'], highlightthickness=0, bd=0, relief='flat', padx=12, pady=6)
+        self.notes.configure(bg=P['card'], fg=P['text'], insertbackground=P['text'], selectbackground=P['sel'],
+                             selectforeground=P['text'], highlightthickness=0, bd=0, relief='flat', padx=4, pady=2)
         for t, c in (('ok', P['green']), ('err', P['red']), ('warn', P['orange']), ('head', P['accent'])):
             self.log.tag_configure(t, foreground=c, font=('Consolas', 10, 'bold'))
         for o, v in (('background', P['field']), ('foreground', P['text']), ('selectBackground', P['accent']),
@@ -496,6 +504,100 @@ class App(tk.Tk):
 
     def copy_tr(self):
         self.clipboard_clear(); self.clipboard_append(self.trp); self.say('Шлях до транслятора скопійовано: %s' % self.trp)
+
+    # ---------- сторінка 5: оновлення (GitHub Releases; ТЗ Markdown/urban_autoupdate_spec.md) ----------
+    def _tab5(self):
+        pg = self.pages['p5']
+        f = self._panel(pg, 'Версія', 'refresh')
+        ttk.Label(f, text='Встановлено: URBAN %s' % VERSION, font=('Segoe UI Semibold', 11)).grid(row=0, column=0, sticky='w')
+        self.upd_st = ttk.Label(f, text='Оновлення ще не перевірялись.', style='Hint.TLabel')
+        self.upd_st.grid(row=1, column=0, sticky='w', pady=(2, 0))
+        b = ttk.Frame(f); b.grid(row=2, column=0, sticky='w', pady=(10, 0))
+        self._btn(b, 'Перевірити оновлення', 'refresh', self.check_update).pack(side='left')
+        self.upd_btn = self._btn(b, 'Оновити', 'download', self.install_update, primary=True, state='disabled')
+        self.upd_btn.pack(side='left', padx=8)
+        self.upd_auto = tk.BooleanVar(value=load_settings().get('update_auto', True))
+        ttk.Checkbutton(f, text='Перевіряти оновлення автоматично при запуску (раз на добу)', variable=self.upd_auto,
+                        command=self._save_auto).grid(row=3, column=0, sticky='w', pady=(10, 0))
+        if not updater.can_install():
+            ttk.Label(f, style='Hint.TLabel', text='Робоча версія (Python): нова версія лише показується; '
+                      'встановлює оновлення програма, поставлена інсталятором.').grid(row=4, column=0, sticky='w', pady=(6, 0))
+        f = self._panel(pg, 'Що нового', 'help')
+        self.notes = tk.Text(f, height=9, wrap='word', state='disabled', font=('Segoe UI', 10))
+        self.notes.pack(fill='both', expand=True)
+        self._set_notes(self._changelog())
+
+    def _changelog(self):
+        try:
+            with open(os.path.join(HERE, 'CHANGELOG.md'), encoding='utf-8') as fh:
+                t = fh.read(); i = t.find('\n## ')  # лише розділи версій, без шапки й опису формату
+                return t[i + 1:].strip() if i >= 0 else ''
+        except OSError:
+            return ''
+
+    def _set_notes(self, text):
+        self.notes.configure(state='normal'); self.notes.delete('1.0', 'end')
+        self.notes.insert('1.0', text.replace('## ', '')); self.notes.configure(state='disabled')
+
+    def _save_auto(self):
+        d = load_settings(); d['update_auto'] = bool(self.upd_auto.get()); save_settings(d)
+
+    def _auto_update(self):
+        if updater.due(load_settings()): self.check_update(manual=False)
+
+    def check_update(self, manual=True):
+        """Перевірка в фоні. Автоматична — мовчки при помилці мережі; ручна — пише, що сталося."""
+        if manual: self.upd_st.configure(text='Перевіряю…')
+        def job():
+            try: info = updater.check()
+            except Exception as e:
+                msg = 'Не вдалося перевірити оновлення: %s' % e
+                if manual: self.q.put(lambda: self.upd_st.configure(text=msg)); self.q.put('УВАГА: ' + msg)
+                return
+            save_settings(updater.mark_checked(load_settings()))
+            self.q.put(lambda: self._found(info, manual))
+        threading.Thread(target=job, daemon=True).start()
+
+    def _found(self, info, manual):
+        self.upd = info
+        if not info:
+            self.upd_st.configure(text='У вас остання версія (%s).' % VERSION); self.upd_btn.configure(state='disabled')
+            if manual: self.say('Оновлення: у вас остання версія %s.' % VERSION)
+            return
+        v = info['version']; can = updater.can_install()
+        self.upd_st.configure(text='Доступна версія %s.' % v)
+        self.upd_btn.configure(text=' Оновити до %s' % v, state='normal' if can else 'disabled')
+        self.verlab.configure(text='URBAN %s  ·  є %s' % (VERSION, v))
+        self._set_notes('%s — нова версія\n%s\n\n%s' % (v, info['notes'], self._changelog()))
+        self.say('УВАГА: є нова версія URBAN %s (у вас %s) — розділ «Оновлення».' % (v, VERSION))
+        notes = info['notes'] if len(info['notes']) < 1200 else info['notes'][:1200] + '…'
+        if can:
+            if messagebox.askyesno('Оновлення URBAN', 'Доступна версія %s (у вас %s).\n\nЩо нового:\n%s\n\n'
+                                   'Оновити зараз? Програма закриється й відкриється вже новою версією.' % (v, VERSION, notes)):
+                self.install_update()
+        elif manual:
+            messagebox.showinfo('Оновлення URBAN', 'На GitHub є версія %s (у вас %s).\nЦе робоча версія з Python — '
+                                'оновлюйте код, а встановлену програму оновить інсталятор.' % (v, VERSION))
+
+    def install_update(self):
+        info = self.upd
+        if not info or not updater.can_install(): return
+        self.upd_btn.configure(state='disabled'); self.upd_st.configure(text='Завантажую версію %s…' % info['version'])
+        self.say('\n=== Оновлення до %s' % info['version']); self.setp(0)
+        def job():
+            try: path = updater.download(info, lambda fr: self.setp(100 * fr))
+            except Exception as e:
+                msg = str(e); self.q.put('ПОМИЛКА оновлення: %s' % msg)
+                self.q.put(lambda: (self.upd_st.configure(text='Не вдалося: ' + msg), self.upd_btn.configure(state='normal')))
+                return
+            self.q.put('ГОТОВО: завантажено й перевірено (SHA-256). Запускаю встановлення — програма закриється.')
+            def go():
+                try: updater.run_installer(path)
+                except Exception as e:
+                    self.say('ПОМИЛКА: не вдалося запустити інсталятор: %s' % e); self.upd_btn.configure(state='normal'); return
+                self.after(800, self.destroy)
+            self.q.put(go)
+        threading.Thread(target=job, daemon=True).start()
 
     # ---------- сторінка 3: ключ за спільними пунктами ----------
     def _tab3(self):

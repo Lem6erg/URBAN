@@ -11,7 +11,8 @@
 | Archicad DXF → Digitals (прив'язка ICP, R12, кольори шарів) | [dxf_digitals](../../dxf_digitals.py), [обгортка перетягування](../../dxf_digitals_drop.py) | тестове топо: ≥95 % вершин ≤ 1 мм; [передача §3](../urban_handoff_2026-11-27.md) |
 | DMF → DXF (читання DMF v1.15, R12, CSV, пікети, зсув) | [dmf2dxf](../../dmf2dxf.py) | конвертація копії DMF у scratchpad; спільний із Кресляром ДПТ (`G:\URBAN\CLAUDE\07_DMF_to_Archicad.md`) |
 | Системи координат (TM, Гельмерт 7 пар., підгонка 2D, автовизначення) | [crs](../../crs.py), [crs_keys.json](../../crs_keys.json), [приклад ключа](../../crs_keys.example.json) | МСК-46 → УСК-2000 на копії; [передача §3](../urban_handoff_2026-11-27.md) |
-| Інсталятор (PyInstaller + Inno Setup) | [build.ps1](../../installer/build.ps1), [URBAN.iss](../../installer/URBAN.iss), [make_assets](../../installer/make_assets.py), [інструкція транслятора](<../../installer/Як підключити транслятор.txt>) | збирання → `G:\URBAN\Документація\URBAN_Setup.exe` |
+| Інсталятор (PyInstaller + Inno Setup) | [build.ps1](../../installer/build.ps1), [URBAN.iss](../../installer/URBAN.iss), [make_assets](../../installer/make_assets.py), [інструкція транслятора](<../../installer/Як підключити транслятор.txt>), [транслятор і шаблон пунктів](../../installer/files) | збирання → `G:\URBAN\Документація\URBAN_Setup.exe` + `.sha256` |
+| Версії, оновлення, випуск | [version](../../version.py), [updater](../../updater.py), сторінка «Оновлення» в [dpt_converter](../../dpt_converter.py) (`_tab5`), [CHANGELOG](../../CHANGELOG.md), [release.ps1](../../installer/release.ps1) | [тести updater](../../tests/test_updater.py); [ТЗ оновлення](../urban_autoupdate_spec.md) |
 
 ## Дані та межі доступу
 
