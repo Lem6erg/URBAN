@@ -1,0 +1,16 @@
+{
+  "_примітка": "Лише перевірені параметри з джерелом. projections — плоскі системи; між проєкціями з однаковим datum перерахунок точний (одна основа). СК-63 тут немає: параметри переходу до неї закриті — лише за спільними пунктами або офіційним ключем (transforms).",
+  "projections": {
+    "МСК-46 (Львівська обл.)": {"datum": "УСК-2000", "ellipsoid": "krassowsky", "lon0": 24, "lat0": 0, "k0": 1, "fe": 300000, "fn": 0,
+      "source": "EPSG:9851 «UCS-2000 / LCS-46 Lviv», spatialreference.org, перевірено 27.11.2026"},
+    "УСК-2000, 6° зона 4 (21°)": {"datum": "УСК-2000", "ellipsoid": "krassowsky", "lon0": 21, "lat0": 0, "k0": 1, "fe": 4500000, "fn": 0,
+      "source": "EPSG:5562 «UCS-2000 / Gauss-Kruger zone 4»"},
+    "УСК-2000, 6° зона 5 (27°)": {"datum": "УСК-2000", "ellipsoid": "krassowsky", "lon0": 27, "lat0": 0, "k0": 1, "fe": 5500000, "fn": 0,
+      "source": "EPSG:5563 «UCS-2000 / Gauss-Kruger zone 5»"},
+    "УСК-2000, 3° зона 7 (21°)": {"datum": "УСК-2000", "ellipsoid": "krassowsky", "lon0": 21, "lat0": 0, "k0": 1, "fe": 7500000, "fn": 0,
+      "source": "EPSG:5570 «UCS-2000 / 3-degree Gauss-Kruger zone 7»"},
+    "УСК-2000, 3° зона 8 (24°)": {"datum": "УСК-2000", "ellipsoid": "krassowsky", "lon0": 24, "lat0": 0, "k0": 1, "fe": 8500000, "fn": 0,
+      "source": "EPSG:5571 «UCS-2000 / 3-degree Gauss-Kruger zone 8»"}
+  },
+  "transforms": []
+}

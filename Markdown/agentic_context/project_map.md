@@ -1,0 +1,24 @@
+# URBAN — карта проєкту
+
+Перевірено: 2026-11-27. Обсяг: існування наведених шляхів і призначення за кодом; не аудит усіх функцій.
+Початок — [README](README.md), контракти — [джерела](sources.md), дії — [маршрути](task_routes.md).
+
+## Області та відповідальність
+
+| Область | Код | Перевірки / джерела |
+|---|---|---|
+| GUI: вкладки, тема, прогрес, меню | [dpt_converter](../../dpt_converter.py), [ui_icons](../../ui_icons.py), [assets](../../assets) | запуск GUI; [передача §1](../urban_handoff_2026-11-27.md) |
+| Archicad DXF → Digitals (прив'язка ICP, R12, кольори шарів) | [dxf_digitals](../../dxf_digitals.py), [обгортка перетягування](../../dxf_digitals_drop.py) | тестове топо: ≥95 % вершин ≤ 1 мм; [передача §3](../urban_handoff_2026-11-27.md) |
+| DMF → DXF (читання DMF v1.15, R12, CSV, пікети, зсув) | [dmf2dxf](../../dmf2dxf.py) | конвертація копії DMF у scratchpad; спільний із Кресляром ДПТ (`G:\URBAN\CLAUDE\07_DMF_to_Archicad.md`) |
+| Системи координат (TM, Гельмерт 7 пар., підгонка 2D, автовизначення) | [crs](../../crs.py), [crs_keys.json](../../crs_keys.json), [приклад ключа](../../crs_keys.example.json) | МСК-46 → УСК-2000 на копії; [передача §3](../urban_handoff_2026-11-27.md) |
+| Інсталятор (PyInstaller + Inno Setup) | [build.ps1](../../installer/build.ps1), [URBAN.iss](../../installer/URBAN.iss), [make_assets](../../installer/make_assets.py), [інструкція транслятора](<../../installer/Як підключити транслятор.txt>) | збирання → `G:\URBAN\Документація\URBAN_Setup.exe` |
+
+## Дані та межі доступу
+
+| Що | Де | Доступ |
+|---|---|---|
+| Налаштування користувача (тема, ключі) | `%APPDATA%\URBAN\settings.json`, `%APPDATA%\URBAN\crs_keys.json` | читати; не скидати без дозволу |
+| Встановлена програма | `%LOCALAPPDATA%\Programs\URBAN` | лише читати |
+| Ярлики й транслятор | `G:\URBAN\Документація\` (`URBAN.bat`, `URBAN.lnk`, `DXF для Digitals.bat`, `07 Для Digitals (МСК).Xml`, `Пункти — шаблон.txt`) | міняти лише в задачі, що їх стосується |
+| Дані об'єктів (DMF, DXF, PLN) | `G:\URBAN\<фірма>\<об'єкт>\` | лише читати; тест — на копії; у git — ніколи |
+| Експеримент запису DMF | `dxf2dmf_exp\` (локально, поза git) | не працює в Digitals; не використовувати |

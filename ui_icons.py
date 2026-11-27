@@ -1,0 +1,78 @@
+"""Контурні іконки URBAN (як у ATLAS: сітка 24×24, лінія 1,5, заокруглені кінці) — малюються PIL кольором теми.
+Кожна іконка — список фігур у координатах 0..24: ('l', [(x,y),…]) лінія; ('p', […]) замкнена;
+('c', cx, cy, r) коло; ('r', x0, y0, x1, y1, рад) прямокутник; ('a', cx, cy, r, від°, до°) дуга; ('f', cx, cy, r) крапка.
+Створено 27.11.2026 (CLAUDE)."""
+from PIL import Image, ImageDraw, ImageTk
+
+ICONS = {
+    # меню
+    'layers':  [('p', [(12, 3), (21, 8), (12, 13), (3, 8)]), ('l', [(3, 12), (12, 17), (21, 12)]), ('l', [(3, 16), (12, 21), (21, 16)])],
+    'convert': [('p', [(6, 3), (14, 3), (19, 8), (19, 21), (6, 21)]), ('l', [(14, 3), (14, 8), (19, 8)]),
+                ('l', [(9, 15), (16, 15)]), ('l', [(13.5, 12.5), (16, 15), (13.5, 17.5)])],
+    'target':  [('c', 12, 12, 7), ('l', [(12, 2), (12, 7)]), ('l', [(12, 17), (12, 22)]), ('l', [(2, 12), (7, 12)]),
+                ('l', [(17, 12), (22, 12)]), ('f', 12, 12, 1.4)],
+    'plug':    [('l', [(9, 3), (9, 8)]), ('l', [(15, 3), (15, 8)]), ('p', [(6, 8), (18, 8), (18, 12), (15, 16), (9, 16), (6, 12)]),
+                ('l', [(12, 16), (12, 21)])],
+    # дії
+    'plus':    [('l', [(12, 5), (12, 19)]), ('l', [(5, 12), (19, 12)])],
+    'minus':   [('l', [(5, 12), (19, 12)])],
+    'folder':  [('p', [(3, 6), (9, 6), (11, 8.5), (21, 8.5), (21, 19), (3, 19)])],
+    'play':    [('p', [(8, 5), (19, 12), (8, 19)])],
+    'calc':    [('r', 5, 3, 19, 21, 2), ('l', [(8, 7), (16, 7)]), ('f', 9, 12, 1.1), ('f', 12, 12, 1.1), ('f', 15, 12, 1.1),
+                ('f', 9, 16, 1.1), ('f', 12, 16, 1.1), ('f', 15, 16, 1.1)],
+    'save':    [('p', [(4, 4), (17, 4), (20, 7), (20, 20), (4, 20)]), ('l', [(8, 4), (8, 9), (15, 9), (15, 4)]),
+                ('r', 7, 13, 17, 20, 0)],
+    'copy':    [('r', 8, 8, 20, 20, 2), ('l', [(16, 8), (16, 5), (5, 5), (5, 16), (8, 16)])],
+    'help':    [('c', 12, 12, 9), ('a', 12, 9.5, 2.8, 180, 405), ('l', [(12, 12.3), (12, 13.8)]), ('f', 12, 17, 1.1)],
+    'sun':     [('c', 12, 12, 4), ('l', [(12, 2.5), (12, 4.5)]), ('l', [(12, 19.5), (12, 21.5)]), ('l', [(2.5, 12), (4.5, 12)]),
+                ('l', [(19.5, 12), (21.5, 12)]), ('l', [(5.3, 5.3), (6.7, 6.7)]), ('l', [(17.3, 17.3), (18.7, 18.7)]),
+                ('l', [(5.3, 18.7), (6.7, 17.3)]), ('l', [(17.3, 6.7), (18.7, 5.3)])],
+    'moon':    [('p', None)],  # серп — обчислюється в _moon()
+    'auto':    [('c', 12, 12, 8), ('l', [(12, 4), (12, 20)])],
+}
+
+
+def _moon():
+    """Серп: зовнішня дуга кола (12,12,r8) поза колом (16.5,7.5,r6.5) + внутрішня дуга навпаки."""
+    import math
+    A, B = (12, 12, 8.0), (16.5, 7.5, 6.5)
+    inside = lambda p, c: math.hypot(p[0] - c[0], p[1] - c[1]) < c[2]
+    ring = lambda c, n=180: [(c[0] + c[2] * math.cos(2 * math.pi * i / n), c[1] + c[2] * math.sin(2 * math.pi * i / n)) for i in range(n)]
+    def arc(c, keep):
+        r = ring(c); m = [keep(p) for p in r]; i0 = next(i for i in range(len(r)) if m[i] and not m[i - 1])
+        r = r[i0:] + r[:i0]; m = m[i0:] + m[:i0]; return [p for p, k in zip(r, m) if k][:m.index(False) if False in m else None]
+    out = arc(A, lambda p: not inside(p, B)); inn = arc(B, lambda p: inside(p, A))
+    return out + inn[::-1]
+
+
+ICONS['moon'] = [('p', _moon())]
+
+
+def _pt(p, k):
+    return (p[0] * k, p[1] * k)
+
+
+def render(name, size, color, sw=1.5):
+    """PIL RGBA іконки name розміром size px (малюється в 4× і зменшується — згладжено)."""
+    S = 4; n = size * S; k = n / 24.0; w = max(1, int(round(sw * k)))
+    im = Image.new('RGBA', (n, n), (0, 0, 0, 0)); d = ImageDraw.Draw(im)
+    for sh in ICONS[name]:
+        t = sh[0]
+        if t in ('l', 'p'):
+            pts = [_pt(p, k) for p in sh[1]] + ([_pt(sh[1][0], k)] if t == 'p' else [])
+            d.line(pts, fill=color, width=w, joint='curve')
+            for x, y in (pts[0], pts[-1]):  # заокруглені кінці
+                d.ellipse((x - w / 2, y - w / 2, x + w / 2, y + w / 2), fill=color)
+        elif t == 'c':
+            cx, cy, r = (v * k for v in sh[1:]); d.ellipse((cx - r, cy - r, cx + r, cy + r), outline=color, width=w)
+        elif t == 'f':
+            cx, cy, r = (v * k for v in sh[1:]); d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=color)
+        elif t == 'r':
+            x0, y0, x1, y1, rr = (v * k for v in sh[1:]); d.rounded_rectangle((x0, y0, x1, y1), radius=rr, outline=color, width=w)
+        elif t == 'a':
+            cx, cy, r = (v * k for v in sh[1:4]); d.arc((cx - r, cy - r, cx + r, cy + r), sh[4], sh[5], fill=color, width=w)
+    return im.resize((size, size), Image.LANCZOS)
+
+
+def photo(name, size, color, sw=1.5):
+    return ImageTk.PhotoImage(render(name, size, color, sw))

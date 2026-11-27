@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+
+# Збирання (PyInstaller / Inno Setup)
+build/
+dist/
+*.spec
+URBAN_Setup*.exe
+
+# Експеримент запису DMF — не працює в Digitals і містить шляхи об'єкта
+dxf2dmf_exp/
+
+# Дані об'єктів і результати — ніколи не комітити
+*.dmf
+*.dxf
+*.dwg
+*.pln
+*.csv
+
+# Налаштування / ключі користувача (локальні копії)
+settings.json
