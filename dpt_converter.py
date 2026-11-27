@@ -231,7 +231,20 @@ class App(tk.Tk):
         hd = tk.Frame(main); hd.pack(fill='x', padx=26, pady=(18, 10)); self._reg(hd, 'bg')
         self.ph = tk.Label(hd, font=('Segoe UI Semibold', 18), anchor='w'); self.ph.pack(anchor='w'); self._reg(self.ph, 'bg', 'text')
         self.phs = tk.Label(hd, font=('Segoe UI', 10), anchor='w'); self.phs.pack(anchor='w'); self._reg(self.phs, 'bg', 'text2')
-        box = tk.Frame(main); box.pack(fill='x', padx=26); self._reg(box, 'bg')
+        # вміст сторінки прокручується (вимога користувача 27.11.2026: «Локація» не вміщалась, шкали й журнал зникали);
+        # шкали процесів і журнал — завжди видно внизу
+        self.main, self.hd = main, hd
+        wrap = tk.Frame(main); wrap.pack(fill='x', padx=(26, 10)); self._reg(wrap, 'bg')
+        self.sc = tk.Canvas(wrap, highlightthickness=0, bd=0, height=200); self._reg(self.sc, 'bg')
+        self.sb = ttk.Scrollbar(wrap, orient='vertical', command=self.sc.yview); self.sc.configure(yscrollcommand=self.sb.set)
+        self.sc.pack(side='left', fill='x', expand=True, padx=(0, 16))
+        box = tk.Frame(self.sc); self._reg(box, 'bg'); self.box = box
+        self._scwin = self.sc.create_window(0, 0, window=box, anchor='nw')
+        box.bind('<Configure>', lambda e: self._fit())
+        self.sc.bind('<Configure>', lambda e: self.sc.itemconfigure(self._scwin, width=e.width))
+        main.bind('<Configure>', lambda e: self._fit())
+        self.bind_all('<MouseWheel>', self._wheel, add='+')
+        self._scroll_on = False
         self.pages = {}
         for k in ('p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p9', 'p10', 'p11', 'p12', 'p13'):
             self.pages[k] = tk.Frame(box); self._reg(self.pages[k], 'bg')
@@ -242,6 +255,7 @@ class App(tk.Tk):
         # шкали процесів відкритої сторінки: рядок «назва · шкала · %» на кожен її процес (вимога користувача 27.11.2026)
         self.pbox = tk.Frame(main); self.pbox.pack(fill='x', padx=26, pady=(4, 8)); self._reg(self.pbox, 'bg')
         lf = self._panel(main, 'Журнал', None, dict(fill='both', expand=True, padx=26, pady=(0, 22)), pad=(4, 0, 4, 4))
+        self.logp = lf
         self.log = tk.Text(lf, height=7, wrap='word', state='disabled', font=('Consolas', 10))
         self.log.pack(fill='both', expand=True)
         self.show('p0'); self.apply_theme()
@@ -249,6 +263,31 @@ class App(tk.Tk):
         self.say('Системи: ' + (', '.join(keys) if keys else 'немає (crs_keys.json)') + '. МСК-46 ↔ УСК-2000 — точно (одна основа, EPSG). СК-63 — лише з офіційним ключем.')
         if not os.path.exists(self.trp): self.say('УВАГА: файл транслятора не знайдено: %s' % self.trp)
         self.after(100, self._pump); self.after(3000, self._watch); self.after(2500, self._auto_update)
+
+    # ---------- прокручування вмісту сторінки ----------
+    JOURNAL_MIN = 150  # пікс. (× масштаб): журнал не стискається нижче
+
+    def _fit(self):
+        """Висота області сторінки = вміст, але не більше, ніж лишається над шкалами й мінімальним журналом."""
+        if not hasattr(self, 'pbox') or not hasattr(self, 'logp'): return
+        need = self.box.winfo_reqheight()
+        avail = (self.main.winfo_height() - self.hd.winfo_height() - 28 - self.pbox.winfo_reqheight() - 12
+                 - int(self.JOURNAL_MIN * self._s) - 22)
+        h = max(int(120 * self._s), min(need, avail))
+        if abs(int(self.sc.cget('height')) - h) > 1: self.sc.configure(height=h)
+        self.sc.configure(scrollregion=(0, 0, 0, need))
+        on = need > h + 1
+        if on != self._scroll_on:
+            self._scroll_on = on
+            if on: self.sb.pack(side='right', fill='y')
+            else: self.sb.pack_forget(); self.sc.yview_moveto(0)
+
+    def _wheel(self, e):
+        """Колесо над сторінкою прокручує її; списки, журнал, таблиці й полотно растру прокручуються самі."""
+        w = e.widget
+        if not self._scroll_on or not str(w).startswith(str(self.sc)): return
+        if isinstance(w, (tk.Text, tk.Listbox, ttk.Treeview)) or w is getattr(self, 'cv10', None): return
+        self.sc.yview_scroll(int(-e.delta / 120) or (-1 if e.delta > 0 else 1), 'units')
 
     # ---------- каркас: реєстр кольорів, панелі, рейка ----------
     def _tip(self, w, text):
@@ -305,6 +344,7 @@ class App(tk.Tk):
         self.cur = key; self.ph.configure(text=self.TITLES[key][0]); self.phs.configure(text=self.TITLES[key][1])
         if hasattr(self, 'P'): self._paint_rail()
         if hasattr(self, 'pbox'): self._bars()
+        if hasattr(self, 'sc'): self.sc.yview_moveto(0); self.after_idle(self._fit)
 
     def _icon(self, name, size, color):
         im = ui_icons.photo(name, int(size * self._s), color); self._img.append(im); return im
@@ -364,6 +404,9 @@ class App(tk.Tk):
         st.map('Treeview', background=[('selected', P['accent'])], foreground=[('selected', '#FFFFFF')])
         st.configure('Treeview.Heading', background=P['seg'], foreground=P['text2'], bordercolor=P['sep'], relief='flat')
         st.map('Treeview.Heading', background=[('active', P['seg'])])
+        st.configure('Vertical.TScrollbar', background=P['seg'], troughcolor=P['bg'], bordercolor=P['bg'], arrowcolor=P['text2'],
+                     lightcolor=P['seg'], darkcolor=P['seg'], gripcount=0)
+        st.map('Vertical.TScrollbar', background=[('active', P['track'])])
         st.configure('Num.TLabel', background=P['fill'], foreground=P['accent'], font=FB)
         st.configure('Link.TButton', background=P['card'], foreground=P['accent'], bordercolor=P['card'], lightcolor=P['card'],
                      darkcolor=P['card'], focuscolor=P['card'], relief='flat', borderwidth=0, padding=(0, 0), font=F)
