@@ -153,7 +153,7 @@ def dpi_aware():
 class App(tk.Tk):
     # меню-рейка (як в ATLAS): групи, іконки, активний пункт — смуга акценту
     RAIL = [('КОНВЕРТАЦІЯ', [('p1', 'layers', 'Archicad → Digitals'), ('p2', 'convert', 'DMF → DXF')]),
-            ('КООРДИНАТИ', [('p3', 'target', 'Ключ за пунктами'), ('p7', 'pin', 'Де це на карті')]),
+            ('КООРДИНАТИ', [('p3', 'target', 'Ключ за пунктами'), ('p7', 'pin', 'Локація')]),
             ('ЗОБРАЖЕННЯ', [('p6', 'image', 'PDF → JPEG / TIFF')]),
             ('ARCHICAD', [('p4', 'plug', 'Транслятор')]),
             ('ПРОГРАМА', [('p5', 'refresh', 'Оновлення')])]
@@ -163,7 +163,7 @@ class App(tk.Tk):
               'p4': ('Транслятор Archicad', 'Підключення «07 Для Digitals (МСК)» в Archicad і експорт DXF'),
               'p5': ('Оновлення', 'Версія програми, що нового, оновлення з GitHub'),
               'p6': ('PDF → JPEG / TIFF', 'Сторінки PDF у растр: три рівні якості, TIFF без втрат (LZW / Ч/Б G4)'),
-              'p7': ('Де це на карті', 'Зйомка DXF/DWG → система координат → місце на Google Maps')}
+              'p7': ('Локація', 'Зйомка DXF/DWG → система координат → місце на Google Maps')}
 
     def __init__(self):
         dpi_aware()
@@ -679,7 +679,7 @@ class App(tk.Tk):
                 for p in ps:
                     if p.lower().endswith('.dxf') and p not in self.lb1.get(0, 'end'): self.lb1.insert('end', p)
             else:
-                self.say('Перетягування файлів — на сторінках «Archicad → Digitals», «PDF → JPEG / TIFF», «Де це на карті».')
+                self.say('Перетягування файлів — на сторінках «Archicad → Digitals», «PDF → JPEG / TIFF», «Локація».')
             return e.action
         self.dnd_bind('<<Drop>>', on_drop)
 

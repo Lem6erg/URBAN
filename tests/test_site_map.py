@@ -1,4 +1,4 @@
-"""Тести «Де це на карті» (ТЗ Markdown/urban_site_map_spec.md). Синтетичні DXF у довільній точці Львівщини —
+"""Тести «Локація» (ТЗ Markdown/urban_site_map_spec.md). Синтетичні DXF у довільній точці Львівщини —
 не дані об'єктів."""
 import os, sys, shutil, tempfile, unittest
 
