@@ -182,7 +182,7 @@ class App(tk.Tk):
               'p11': ('Очищення файлів', 'Метадані DOCX / XLSX / PPTX / PDF перед відправкою: автор, організація, назва, шаблон'),
               'p12': ('Кадастр (XML ДЗК)', 'Обмінний файл ДЗК → DXF у системі координат; ділянка за к.н. на карті'),
               'p13': ('Перевірка ПЗ', 'DOCX перед видачею: шифри норм, залишки чатів, виділення, коментарі, метадані, нумерація'),
-              'p7': ('Локація', 'Зйомка DXF/DWG → система координат → місце на Google Maps')}
+              'p7': ('Локація', 'Зйомка DXF/DWG → система координат → місце на карті (Google, Bing, кадастр)')}
 
     def __init__(self):
         dpi_aware()
@@ -711,9 +711,11 @@ class App(tk.Tk):
         f = self._panel(pg, 'Місце', 'pin')
         self.res7 = ttk.Label(f, text='Файл не вибрано.', style='Hint.TLabel', justify='left'); self.res7.grid(row=0, column=0, sticky='w')
         b = ttk.Frame(f); b.grid(row=1, column=0, sticky='w', pady=(10, 0))
-        self.go7 = self._btn(b, 'Відкрити в Google Maps', 'globe', self.open7, primary=True, state='disabled'); self.go7.pack(side='left')
+        self.go7 = self._btn(b, 'Google Maps', 'globe', lambda: self.open7('google'), primary=True, state='disabled'); self.go7.pack(side='left')
+        self.bg7 = self._btn(b, 'Bing', 'globe', lambda: self.open7('bing'), state='disabled'); self.bg7.pack(side='left', padx=(8, 0))
+        self.kd7 = self._btn(b, 'Кадастрова карта', 'parcel', lambda: self.open7('kadastr'), state='disabled'); self.kd7.pack(side='left', padx=(8, 0))
         self.cp7 = self._btn(b, 'Копіювати координати', 'copy', self.copy7, state='disabled'); self.cp7.pack(side='left', padx=8)
-        ttk.Label(f, style='Hint.TLabel', text='Координати передаються в Google лише після натиснення «Відкрити».\n'
+        ttk.Label(f, style='Hint.TLabel', text='Координати передаються в Google, Bing чи на кадастрову карту (map.land.gov.ua) лише після натиснення кнопки.\n'
                   'СК-63 — наближено (кілька метрів), для пошуку місця, не для перерахунку.').grid(row=2, column=0, sticky='w', pady=(8, 0))
         self.loc7 = None; self.lay7 = {}
         f = self._panel(pg, 'Межа і ЦЗ', 'target')
@@ -742,7 +744,8 @@ class App(tk.Tk):
         if not p: return
         if not os.path.exists(p): self.res7.configure(text='Файл не знайдено.'); return
         sysn = self.sys7.get(); sysn = None if sysn == AUTO7 else sysn
-        self.loc7 = None; self.go7.configure(state='disabled'); self.cp7.configure(state='disabled')
+        self.loc7 = None
+        for w in (self.go7, self.bg7, self.kd7, self.cp7): w.configure(state='disabled')
         self.res7.configure(text='Читаю %s…' % os.path.basename(p))
         def job():
             try: r = site_map.locate(p, sysn); err = None
@@ -757,7 +760,8 @@ class App(tk.Tk):
         txt = ('%s\nШирота %.6f°, довгота %.6f°   ·   центр E %.2f  N %.2f%s\nОхоплення ≈ %.0f м, вершин %d'
                % (r['system'], r['lat'], r['lon'], r['E'], r['N'], '  (DXF у мм → ×0,001)' if r['k'] != 1 else '', r['span'], r['n']))
         if r['others']: txt += '\nМожливі також: ' + ', '.join(r['others'])
-        self.res7.configure(text=txt); self.go7.configure(state='normal'); self.cp7.configure(state='normal')
+        self.res7.configure(text=txt)
+        for w in (self.go7, self.bg7, self.kd7, self.cp7): w.configure(state='normal')
         def lj():
             try: L = cz_routes.layers(p)
             except Exception as e: L = {}; self.q.put('УВАГА: шари не прочитано: %s' % e)
@@ -802,10 +806,11 @@ class App(tk.Tk):
             self.q.put('ГОТОВО: %s, %s' % (os.path.basename(r['txt']), os.path.basename(r['dxf'])))
         self._bg(job, 'Відстані ЦЗ')
 
-    def open7(self):
+    def open7(self, where='google'):
         if not self.loc7: return
         import webbrowser
-        webbrowser.open(site_map.gmaps_url(self.loc7['lat'], self.loc7['lon'], self.loc7['span']))
+        url = {'google': site_map.gmaps_url, 'bing': site_map.bing_url, 'kadastr': site_map.kadastr_url}[where]
+        webbrowser.open(url(self.loc7['lat'], self.loc7['lon'], self.loc7['span']))
 
     def copy7(self):
         if not self.loc7: return
