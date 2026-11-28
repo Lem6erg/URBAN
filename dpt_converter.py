@@ -715,7 +715,7 @@ class App(tk.Tk):
         self.bg7 = self._btn(b, 'Bing', 'globe', lambda: self.open7('bing'), state='disabled'); self.bg7.pack(side='left', padx=(8, 0))
         self.kd7 = self._btn(b, 'Кадастрова карта', 'parcel', lambda: self.open7('kadastr'), state='disabled'); self.kd7.pack(side='left', padx=(8, 0))
         self.cp7 = self._btn(b, 'Копіювати координати', 'copy', self.copy7, state='disabled'); self.cp7.pack(side='left', padx=8)
-        ttk.Label(f, style='Hint.TLabel', text='Координати передаються в Google, Bing чи на кадастрову карту (map.land.gov.ua) лише після натиснення кнопки.\n'
+        ttk.Label(f, style='Hint.TLabel', text='Координати передаються в Google, Bing чи на кадастрову карту (kadastr.com.ua) лише після натиснення кнопки.\n'
                   'СК-63 — наближено (кілька метрів), для пошуку місця, не для перерахунку.').grid(row=2, column=0, sticky='w', pady=(8, 0))
         self.loc7 = None; self.lay7 = {}
         f = self._panel(pg, 'Межа і ЦЗ', 'target')

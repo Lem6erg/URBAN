@@ -164,16 +164,9 @@ def bing_url(lat, lon, span=300.0):
     return 'https://www.bing.com/maps?cp=%.6f~%.6f&lvl=%d&style=h&sp=point.%.6f_%.6f_' % (lat, lon, zoom(span, lat), lat, lon)
 
 
-def mercator(lat, lon):
-    """WGS-84 → Web Mercator (EPSG:3857), м."""
-    R0 = 6378137.0
-    return math.radians(lon) * R0, R0 * math.log(math.tan(math.pi / 4 + math.radians(lat) / 2))
-
-
 def kadastr_url(lat, lon, span=300.0):
-    """Публічна кадастрова карта України (map.land.gov.ua): центр у EPSG:3857, шар кадастру, ортофото."""
-    x, y = mercator(lat, lon)
-    return 'https://map.land.gov.ua/?cc=%.1f,%.1f&z=%d&l=kadastr&bl=ortho10k_all' % (x, y, min(zoom(span, lat), 18))
+    """Кадастрова карта kadastr.com.ua: центр ?ll=широта,довгота, масштаб z (3–19) — з коду сайту, перевірено 28.11.2026."""
+    return 'https://kadastr.com.ua/?ll=%.6f,%.6f&z=%d' % (lat, lon, zoom(span, lat))
 
 
 if __name__ == '__main__':

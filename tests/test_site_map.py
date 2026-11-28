@@ -81,9 +81,7 @@ class Locate(unittest.TestCase):
     def test_url_and_zoom(self):
         b = M.bing_url(LAT, LON, 200)
         self.assertTrue(b.startswith('https://www.bing.com/maps?cp=49.500000~24.100000&lvl='))
-        x, y = M.mercator(LAT, LON)
-        self.assertAlmostEqual(x, 2682799.7, delta=0.5); self.assertAlmostEqual(y, 6360130.7, delta=0.5)
-        self.assertIn('map.land.gov.ua/?cc=%.1f,%.1f&z=' % (x, y), M.kadastr_url(LAT, LON, 200))
+        self.assertTrue(M.kadastr_url(LAT, LON, 200).startswith('https://kadastr.com.ua/?ll=49.500000,24.100000&z='))
         u = M.gmaps_url(LAT, LON, 200)
         self.assertTrue(u.startswith('https://www.google.com/maps/place/49.500000,24.100000/@49.500000,24.100000,'))
         self.assertGreater(M.zoom(200, LAT), M.zoom(5000, LAT))
